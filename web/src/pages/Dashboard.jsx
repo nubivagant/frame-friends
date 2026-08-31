@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { useGame } from "../GameContext";
 import { Avatar, Countdown, TypeRow, SectionLabel, Photo } from "../components/Shared";
 import { fmtDeadlineLabel } from "../game";
+import { api } from "../api";
 
 export default function Dashboard({ me }) {
   const { state } = useGame();
@@ -31,15 +32,23 @@ export default function Dashboard({ me }) {
     <div className="page">
       <div className="row between" style={{ alignItems: "flex-start", marginBottom: 14, flexWrap: "wrap", gap: 12 }}>
         <div>
-          <p className="eyebrow">
-            This Week · S{cur.season} · W{String(cur.number).padStart(2, "0")}
-          </p>
+          <div className="row" style={{ gap: 12, alignItems: "baseline" }}>
+            <p className="eyebrow" style={{ margin: 0 }}>
+              This Week · S{cur.season} · W{String(cur.number).padStart(2, "0")}
+            </p>
+            {state.standings.participationStreak > 0 && (
+              <span className="mono" style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--hi-vis)" }} title="Consecutive weeks you've both submitted">
+                🔥 {state.standings.participationStreak} week{state.standings.participationStreak === 1 ? "" : "s"}
+              </span>
+            )}
+          </div>
           <h1 className="serif italic rise" style={{ fontSize: 32, lineHeight: 1.1, marginTop: 8, fontWeight: 400 }}>
             {headline}
           </h1>
           <p className="muted" style={{ marginTop: 6, fontSize: 13, maxWidth: "56ch" }}>
             {sub}
           </p>
+          {!theirSub && <NudgeButton them={them} />}
         </div>
         <Countdown deadline={cur.deadline} />
       </div>
@@ -122,6 +131,44 @@ export default function Dashboard({ me }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function NudgeButton({ them }) {
+  const [state, setState] = useState("idle"); // idle | sending | sent | error
+  const [error, setError] = useState("");
+
+  async function send() {
+    setState("sending");
+    setError("");
+    try {
+      await api.nudge();
+      setState("sent");
+    } catch (err) {
+      setState("error");
+      setError(err.code === "rate_limited" ? `Already nudged ${them.name} recently — give it a bit.` : "Couldn't send that.");
+    }
+  }
+
+  if (state === "sent") {
+    return (
+      <p className="muted" style={{ marginTop: 10, fontSize: 12 }} role="status">
+        Nudged {them.name}.
+      </p>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <button className="btn ghost" style={{ fontSize: 12, padding: "6px 12px" }} disabled={state === "sending"} onClick={send}>
+        {state === "sending" ? "…" : `Nudge ${them.name}`}
+      </button>
+      {state === "error" && (
+        <p role="alert" className="muted" style={{ color: "var(--t-emotion)", fontSize: 11, marginTop: 6 }}>
+          {error}
+        </p>
+      )}
     </div>
   );
 }

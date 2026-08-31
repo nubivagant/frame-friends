@@ -18,9 +18,12 @@ model User {
   strengths    String[] @default([])
   createdAt    DateTime @default(now())
 
-  submissions Submission[]
-  ratings     Rating[]
-  resetTokens PasswordResetToken[]
+  submissions       Submission[]
+  ratings           Rating[]
+  resetTokens       PasswordResetToken[]
+  nudgesSent        Nudge[]           @relation("NudgeFrom")
+  nudgesReceived    Nudge[]           @relation("NudgeTo")
+  pushSubscriptions PushSubscription[]
 }
 
 model PasswordResetToken {
@@ -55,10 +58,12 @@ model Week {
   deadline              DateTime
   rerollsUsedThisSeason Int      @default(0)
   archivedAt            DateTime?
+  reminderSentAt        DateTime?
 
   submissions Submission[]
   ratings     Rating[]
   verdict     Verdict?
+  nudges      Nudge[]
 
   @@index([deadline])
 }
@@ -106,4 +111,29 @@ model Verdict {
   winnerSubmissionId Int? // null = tie
   awards             String[] @default([])
   createdAt          DateTime @default(now())
+}
+
+model Nudge {
+  id         Int      @id @default(autoincrement())
+  weekId     Int
+  week       Week     @relation(fields: [weekId], references: [id], onDelete: Cascade)
+  fromUserId Int
+  fromUser   User     @relation("NudgeFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUserId   Int
+  toUser     User     @relation("NudgeTo", fields: [toUserId], references: [id], onDelete: Cascade)
+  sentAt     DateTime @default(now())
+
+  @@index([weekId, toUserId, sentAt])
+}
+
+model PushSubscription {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }

@@ -1,6 +1,7 @@
 "use strict";
 const { prisma } = require("./db");
 const { pickBriefFor, sumScores, computeAwards, nextOccurrence } = require("./game");
+const { sendPushToUsers } = require("./push");
 
 const WEEK_INCLUDE = { submissions: true, ratings: true, verdict: true };
 
@@ -115,6 +116,19 @@ async function rolloverIfNeeded() {
     week = await prisma.week.findUniqueOrThrow({ where: { number: nextNumber }, include: WEEK_INCLUDE });
   }
 
+  // Attached to the transition itself, not to whichever caller happened to
+  // trigger it — rolloverIfNeeded() is called both by the cron sweep and by
+  // the /api/state route on every page load/poll, so a push wired only into
+  // the cron caller would silently never fire whenever a page load won the
+  // race instead (a real gap this had until it was actually load-tested).
+  if (rolledOver) {
+    const users = await prisma.user.findMany({ select: { id: true } });
+    sendPushToUsers(
+      users.map((u) => u.id),
+      { title: "This week's brief is up", body: week.brief, url: "/brief" }
+    ).catch((err) => console.error("[push] new-brief failed", err));
+  }
+
   return { week, rolledOver };
 }
 
@@ -160,7 +174,18 @@ async function deriveStandings() {
     byUser[u.id].avg = rated ? (byUser[u.id].points / rated).toFixed(1) : "0.0";
   });
 
-  return { byUser, ties, weeks: archivedWeeks.length, rated };
+  // Participation streak: consecutive weeks (most recent first) where BOTH
+  // of you submitted, regardless of who won or whether it ever got rated.
+  // This is the shared habit metric, distinct from each player's win streak
+  // above — it's meant to have something to lose the moment either of you
+  // misses a week, not to reward performance.
+  let participationStreak = 0;
+  for (let i = archivedWeeks.length - 1; i >= 0; i--) {
+    if (archivedWeeks[i].submissions.length === 2) participationStreak += 1;
+    else break;
+  }
+
+  return { byUser, ties, weeks: archivedWeeks.length, rated, participationStreak };
 }
 
 module.exports = { getSettings, getCurrentWeek, rolloverIfNeeded, deriveStandings, computeWeekResult, isRevealed, WEEK_INCLUDE };

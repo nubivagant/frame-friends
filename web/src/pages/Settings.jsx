@@ -3,6 +3,48 @@ import { SectionLabel } from "../components/Shared";
 import { WEEKDAYS } from "../game";
 import { useGame } from "../GameContext";
 import { api } from "../api";
+import { usePush } from "../usePush";
+
+function NotificationsCard() {
+  const { status, busy, enable, disable } = usePush();
+  const [error, setError] = useState("");
+
+  async function handleToggle() {
+    setError("");
+    try {
+      if (status === "on") await disable();
+      else await enable();
+    } catch (err) {
+      setError("Couldn't turn on notifications — try again.");
+    }
+  }
+
+  const copy = {
+    checking: "Checking…",
+    unsupported: "This browser doesn't support notifications. On iPhone, add Frame Friends to your Home Screen first (Share → Add to Home Screen), then try from there.",
+    denied: "Notifications are blocked for this site in your browser settings — nothing I can do from here to re-prompt you.",
+    off: "Get a notification when the brief drops, when it's about to lock, when your partner nudges you, or when reveal is ready.",
+    on: "Notifications are on for this browser/device.",
+  }[status];
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <div className="row between" style={{ gap: 16, flexWrap: "wrap" }}>
+        <p className="muted" style={{ fontSize: 13, maxWidth: "50ch", margin: 0 }}>{copy}</p>
+        {(status === "on" || status === "off") && (
+          <button className="btn ghost" disabled={busy} onClick={handleToggle}>
+            {busy ? "…" : status === "on" ? "Turn off" : "Enable notifications"}
+          </button>
+        )}
+      </div>
+      {error && (
+        <p role="alert" className="muted" style={{ color: "var(--t-emotion)", fontSize: 12, marginTop: 10 }}>
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
 
 export default function Settings({ me, onNameChanged }) {
   const { state, reload } = useGame();
@@ -103,6 +145,11 @@ export default function Settings({ me, onNameChanged }) {
             </div>
           </div>
         </div>
+      </div>
+
+      <div style={{ marginTop: 32 }}>
+        <SectionLabel>Notifications</SectionLabel>
+        <NotificationsCard />
       </div>
 
       <div className="row" style={{ justifyContent: "flex-end", gap: 10, marginTop: 36, alignItems: "center" }}>
