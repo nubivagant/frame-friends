@@ -1,0 +1,109 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  slug         String   @unique // "scott" | "kurtis" — stable internal id, independent of display name/email
+  name         String
+  email        String   @unique
+  passwordHash String?
+  title        String   @default("")
+  bio          String   @default("")
+  strengths    String[] @default([])
+  createdAt    DateTime @default(now())
+
+  submissions Submission[]
+  ratings     Rating[]
+  resetTokens PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model Settings {
+  id                    Int    @id @default(1)
+  deadlineDay           String @default("Sunday")
+  deadlineTime          String @default("20:00")
+  briefDropDay          String @default("Monday")
+  rerollTokensPerSeason Int    @default(2)
+  seasonLength          Int    @default(8)
+}
+
+model Week {
+  id                    Int      @id @default(autoincrement())
+  number                Int      @unique
+  season                Int
+  types                 String[]
+  brief                 String
+  inspiration           String
+  opened                DateTime
+  deadline              DateTime
+  rerollsUsedThisSeason Int      @default(0)
+  archivedAt            DateTime?
+
+  submissions Submission[]
+  ratings     Rating[]
+  verdict     Verdict?
+
+  @@index([deadline])
+}
+
+model Submission {
+  id          Int      @id @default(autoincrement())
+  weekId      Int
+  week        Week     @relation(fields: [weekId], references: [id], onDelete: Cascade)
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  photoPath   String
+  title       String   @default("")
+  note        String   @default("")
+  caption     String   @default("")
+  submittedAt DateTime @default(now())
+
+  @@unique([weekId, userId])
+}
+
+model Rating {
+  id         Int      @id @default(autoincrement())
+  weekId     Int
+  week       Week     @relation(fields: [weekId], references: [id], onDelete: Cascade)
+  raterId    Int // the user who submitted this rating — it scores the OTHER player's photo
+  rater      User     @relation(fields: [raterId], references: [id], onDelete: Cascade)
+  scores     Json // { interpretation, composition, mood, originality, execution }
+  note       String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([weekId, raterId])
+}
+
+model Verdict {
+  id                 Int      @id @default(autoincrement())
+  weekId             Int      @unique
+  week               Week     @relation(fields: [weekId], references: [id], onDelete: Cascade)
+  source             String // "ai" | "guest"
+  judgeName          String   @default("")
+  // critique/scores are keyed by submission id (as a JSON string key) — the
+  // A/B anonymization is only a presentation trick used while calling the
+  // judge; the server resolves it back to real submissions before storing.
+  critique           Json // { [submissionId]: text, comparison, why }
+  scores             Json // { [submissionId]: { interpretation, composition, mood, originality, execution } }
+  winnerSubmissionId Int? // null = tie
+  awards             String[] @default([])
+  createdAt          DateTime @default(now())
+}

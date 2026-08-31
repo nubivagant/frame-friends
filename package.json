@@ -1,0 +1,9 @@
+{
+  "name": "frame-friends",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "build": "npm install --prefix web && npm run build --prefix web && npm install --prefix server && npm run prisma:generate --prefix server",
+    "start": "npm start --prefix server"
+  }
+}
