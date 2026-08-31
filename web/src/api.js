@@ -34,4 +34,9 @@ export const api = {
   reroll: () => request("/brief/reroll", { method: "POST" }),
   updateSettings: (data) => request("/settings", { method: "PATCH", body: JSON.stringify(data) }),
   updateMe: (data) => request("/players/me", { method: "PATCH", body: JSON.stringify(data) }),
+
+  nudge: () => request("/nudge", { method: "POST" }),
+  getVapidKey: () => request("/push/vapid-public-key"),
+  subscribePush: (subscription) => request("/push/subscribe", { method: "POST", body: JSON.stringify(subscription) }),
+  unsubscribePush: (endpoint) => request("/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint }) }),
 };

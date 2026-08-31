@@ -9,6 +9,10 @@ const { CRITERIA, pickBriefFor } = require("../game");
 const { getSettings, getCurrentWeek, rolloverIfNeeded, deriveStandings, computeWeekResult, isRevealed, WEEK_INCLUDE } = require("../weeks");
 const { saveResizedPhoto, photoAbsolutePath } = require("../photos");
 const { runAiJudge } = require("../judge");
+const { sendPush, sendPushToUsers } = require("../push");
+const config = require("../config");
+
+const NUDGE_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 
 const upload = multer({ limits: { fileSize: 24 * 1024 * 1024 } }); // 24MB, matches the old brief-page copy
 
@@ -66,7 +70,7 @@ router.get("/state", async (req, res) => {
     players: users.map((u) => ({ ...publicUser(u), standings: standings.byUser[u.id] })),
     settings,
     currentWeek: weekPayload,
-    standings: { ties: standings.ties, weeks: standings.weeks },
+    standings: { ties: standings.ties, weeks: standings.weeks, participationStreak: standings.participationStreak },
   });
 });
 
@@ -128,9 +132,57 @@ router.post("/submissions", upload.single("photo"), async (req, res) => {
   const count = await prisma.submission.count({ where: { weekId: week.id } });
   if (count === 2) {
     runAiJudge(week.id).catch((err) => console.error("[judge] failed", err));
+    const allUsers = await prisma.user.findMany({ select: { id: true } });
+    sendPushToUsers(
+      allUsers.map((u) => u.id),
+      { title: "Reveal is ready", body: `"${week.brief}" — both of you are in.`, url: "/reveal" }
+    ).catch((err) => console.error("[push] reveal-ready failed", err));
   }
 
   res.json({ ok: true, submissionId: submission.id });
+});
+
+router.post("/nudge", async (req, res) => {
+  const { week } = await rolloverIfNeeded();
+  const users = await prisma.user.findMany({ select: { id: true, name: true } });
+  const me = users.find((u) => u.id === req.session.userId);
+  const target = otherUserId(users, req.session.userId);
+  if (!target) return res.status(400).json({ error: "no_other_player" });
+
+  const alreadySubmitted = week.submissions.some((s) => s.userId === target);
+  if (alreadySubmitted) return res.status(400).json({ error: "already_submitted" });
+
+  const recent = await prisma.nudge.findFirst({
+    where: { weekId: week.id, toUserId: target, sentAt: { gte: new Date(Date.now() - NUDGE_COOLDOWN_MS) } },
+    orderBy: { sentAt: "desc" },
+  });
+  if (recent) return res.status(429).json({ error: "rate_limited", retryAfter: recent.sentAt });
+
+  await prisma.nudge.create({ data: { weekId: week.id, fromUserId: req.session.userId, toUserId: target } });
+  await sendPush(target, { title: `${me.name} is waiting on you`, body: `"${week.brief}" — don't leave them hanging.`, url: "/upload" });
+
+  res.json({ ok: true });
+});
+
+router.get("/push/vapid-public-key", (req, res) => {
+  res.json({ key: config.vapidPublicKey || null });
+});
+
+router.post("/push/subscribe", async (req, res) => {
+  const { endpoint, keys } = req.body || {};
+  if (!endpoint || !keys || !keys.p256dh || !keys.auth) return res.status(400).json({ error: "invalid_subscription" });
+  await prisma.pushSubscription.upsert({
+    where: { endpoint },
+    update: { userId: req.session.userId, p256dh: keys.p256dh, auth: keys.auth },
+    create: { endpoint, userId: req.session.userId, p256dh: keys.p256dh, auth: keys.auth },
+  });
+  res.json({ ok: true });
+});
+
+router.post("/push/unsubscribe", async (req, res) => {
+  const { endpoint } = req.body || {};
+  if (endpoint) await prisma.pushSubscription.deleteMany({ where: { endpoint, userId: req.session.userId } });
+  res.json({ ok: true });
 });
 
 router.post("/ratings", async (req, res) => {

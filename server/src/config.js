@@ -18,4 +18,7 @@ module.exports = {
   appUrl: (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, ""),
   photosDir: process.env.PHOTOS_DIR || "./.devdata/photos",
   isProduction: process.env.NODE_ENV === "production",
+  vapidPublicKey: process.env.VAPID_PUBLIC_KEY || "",
+  vapidPrivateKey: process.env.VAPID_PRIVATE_KEY || "",
+  vapidSubject: process.env.VAPID_SUBJECT || "mailto:scottshirbin@gmail.com",
 };
