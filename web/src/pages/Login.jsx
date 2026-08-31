@@ -39,13 +39,13 @@ export default function Login({ onLoggedIn }) {
   return (
     <div className="gate">
       <div className="gate-card">
-        <div className="eyebrow">Frame Friends</div>
-        <div className="headline-l serif italic" style={{ marginTop: 10 }}>
+        <p className="eyebrow">Frame Friends</p>
+        <h1 className="headline-l serif italic" style={{ marginTop: 10 }}>
           {mode === "login" ? "Welcome back." : "Set or reset your password."}
-        </div>
+        </h1>
 
         {mode === "sent" ? (
-          <div className="card" style={{ marginTop: 24 }}>
+          <div className="card" style={{ marginTop: 24 }} role="status">
             <p className="muted">If that email is one of the two accounts on this game, a link just went out. It expires in an hour.</p>
             <button className="btn ghost" style={{ marginTop: 16 }} onClick={() => setMode("login")}>
               ← Back to login
@@ -54,17 +54,34 @@ export default function Login({ onLoggedIn }) {
         ) : (
           <form className="card col" style={{ marginTop: 24, gap: 14 }} onSubmit={mode === "login" ? submit : submitForgot}>
             <div className="col" style={{ gap: 6 }}>
-              <label className="eyebrow">Email</label>
-              <input className="text" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
+              <label className="eyebrow" htmlFor="login-email">Email</label>
+              <input
+                id="login-email"
+                className="text"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoFocus
+              />
             </div>
             {mode === "login" && (
               <div className="col" style={{ gap: 6 }}>
-                <label className="eyebrow">Password</label>
-                <input className="text" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+                <label className="eyebrow" htmlFor="login-password">Password</label>
+                <input
+                  id="login-password"
+                  className="text"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
               </div>
             )}
             {error && (
-              <div className="muted" style={{ color: "var(--t-emotion)", fontSize: 13 }}>
+              <div role="alert" className="muted" style={{ color: "var(--t-emotion)", fontSize: 13 }}>
                 {error}
               </div>
             )}

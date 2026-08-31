@@ -38,22 +38,22 @@ export default function Settings({ me, onNameChanged }) {
   return (
     <div className="page" style={{ maxWidth: 920 }}>
       <div className="row between" style={{ marginBottom: 18 }}>
-        <div className="eyebrow">Settings · The Frame Friends ruleset</div>
+        <p className="eyebrow">Settings · The Frame Friends ruleset</p>
       </div>
-      <div className="headline-l serif italic" style={{ marginBottom: 12 }}>
+      <h1 className="headline-l serif italic" style={{ marginBottom: 12 }}>
         How you two play the game.
-      </div>
+      </h1>
       <p className="muted" style={{ maxWidth: "62ch", marginBottom: 36 }}>
         You're logged in as <strong>{me.name}</strong> ({me.email}).
       </p>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
+      <div className="grid-2">
         <div>
           <SectionLabel>Your name</SectionLabel>
           <div className="card" style={{ marginTop: 16 }}>
             <div className="col" style={{ gap: 6 }}>
-              <label className="eyebrow">Display name</label>
-              <input className="text" value={name} onChange={(e) => setName(e.target.value)} />
+              <label className="eyebrow" htmlFor="settings-name">Display name</label>
+              <input id="settings-name" className="text" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
           </div>
         </div>
@@ -62,33 +62,36 @@ export default function Settings({ me, onNameChanged }) {
           <SectionLabel>Cadence</SectionLabel>
           <div className="card" style={{ marginTop: 16 }}>
             <div className="col" style={{ gap: 6 }}>
-              <label className="eyebrow">Brief drops</label>
-              <select className="text" value={settings.briefDropDay} onChange={(e) => setCfg({ ...settings, briefDropDay: e.target.value })}>
+              <label className="eyebrow" htmlFor="settings-drop-day">Brief drops</label>
+              <select id="settings-drop-day" className="text" value={settings.briefDropDay} onChange={(e) => setCfg({ ...settings, briefDropDay: e.target.value })}>
                 {WEEKDAYS.map((d) => (
                   <option key={d}>{d}</option>
                 ))}
               </select>
             </div>
             <div className="col" style={{ gap: 6, marginTop: 14 }}>
-              <label className="eyebrow">Submissions lock</label>
-              <div className="row" style={{ gap: 10 }}>
-                <select className="text" style={{ flex: 2 }} value={settings.deadlineDay} onChange={(e) => setCfg({ ...settings, deadlineDay: e.target.value })}>
+              <span className="eyebrow" id="settings-lock-label">Submissions lock</span>
+              <div className="row" role="group" aria-labelledby="settings-lock-label" style={{ gap: 10 }}>
+                <label className="sr-only" htmlFor="settings-lock-day">Submissions lock day</label>
+                <select id="settings-lock-day" className="text" style={{ flex: 2 }} value={settings.deadlineDay} onChange={(e) => setCfg({ ...settings, deadlineDay: e.target.value })}>
                   {WEEKDAYS.map((d) => (
                     <option key={d}>{d}</option>
                   ))}
                 </select>
-                <input className="text" style={{ flex: 1 }} value={settings.deadlineTime} onChange={(e) => setCfg({ ...settings, deadlineTime: e.target.value })} />
+                <label className="sr-only" htmlFor="settings-lock-time">Submissions lock time</label>
+                <input id="settings-lock-time" className="text" style={{ flex: 1 }} value={settings.deadlineTime} onChange={(e) => setCfg({ ...settings, deadlineTime: e.target.value })} />
               </div>
-              <div className="muted" style={{ fontSize: 11 }}>
+              <p className="muted" style={{ fontSize: 11, margin: 0 }}>
                 Both times are in London time, whichever timezone you two are actually in.
-              </div>
+              </p>
             </div>
             <div className="col" style={{ gap: 6, marginTop: 14 }}>
-              <label className="eyebrow">Reroll tokens per season</label>
-              <div className="row" style={{ gap: 6 }}>
+              <span className="eyebrow" id="settings-reroll-label">Reroll tokens per season</span>
+              <div className="row" role="group" aria-labelledby="settings-reroll-label" style={{ gap: 6 }}>
                 {[0, 1, 2, 3].map((n) => (
                   <button
                     key={n}
+                    aria-pressed={settings.rerollTokensPerSeason === n}
                     className="btn ghost"
                     style={{ flex: 1, justifyContent: "center", borderColor: settings.rerollTokensPerSeason === n ? "var(--ink)" : "var(--line)" }}
                     onClick={() => setCfg({ ...settings, rerollTokensPerSeason: n })}
@@ -103,7 +106,7 @@ export default function Settings({ me, onNameChanged }) {
       </div>
 
       <div className="row" style={{ justifyContent: "flex-end", gap: 10, marginTop: 36, alignItems: "center" }}>
-        {saved && <span className="muted" style={{ fontSize: 12 }}>Saved.</span>}
+        <span className="muted" role="status" aria-live="polite" style={{ fontSize: 12 }}>{saved ? "Saved." : ""}</span>
         <button className="btn primary" disabled={busy} onClick={saveAll}>
           {busy ? "Saving…" : "Save changes"}
         </button>

@@ -27,10 +27,10 @@ export default function Upload({ me }) {
   if (mySub && !forceEdit) {
     return (
       <div className="page" style={{ maxWidth: 720, textAlign: "center", paddingTop: 100 }}>
-        <div className="eyebrow rise">Submission received</div>
-        <div className="headline-l serif italic rise d1" style={{ marginTop: 14, marginBottom: 24 }}>
+        <p className="eyebrow rise">Submission received</p>
+        <h1 className="headline-l serif italic rise d1" style={{ marginTop: 14, marginBottom: 24 }}>
           Sealed. Held until both arrive.
-        </div>
+        </h1>
         <div className="rise d2" style={{ display: "inline-block", margin: "0 auto" }}>
           <Seal n={cur.number} season={cur.season} color="var(--t-emotion)" />
         </div>
@@ -78,30 +78,38 @@ export default function Upload({ me }) {
   return (
     <div className="page" style={{ maxWidth: 1100 }}>
       <div className="row between" style={{ marginBottom: 18 }}>
-        <div className="eyebrow">
+        <p className="eyebrow">
           Upload · Week {String(cur.number).padStart(2, "0")} · Playing as <span style={{ color: "var(--t-street)" }}>{me.name}</span>
-        </div>
+        </p>
         <button className="btn ghost" onClick={() => navigate("/")}>
           ← Cancel
         </button>
       </div>
-      <div className="serif italic" style={{ fontSize: 22, color: "var(--muted)", marginBottom: 6 }}>
+      <h1 className="serif italic" style={{ fontSize: 22, color: "var(--muted)", marginBottom: 6, fontWeight: 400 }}>
         "{cur.brief}"
-      </div>
+      </h1>
       <div className="row" style={{ marginBottom: 28 }}>
         <TypeRow types={cur.types} />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 32 }}>
+      <div className="grid-2-wide">
         <div className="col" style={{ gap: 14 }}>
           {previewUrl ? (
-            <Photo src={previewUrl} ratio="4 / 5" corner="UNCONFIRMED · YOUR ENTRY" />
+            <Photo src={previewUrl} ratio="4 / 5" alt="Your unconfirmed entry preview" corner="UNCONFIRMED · YOUR ENTRY" />
           ) : (
-            <div className="dropzone" onClick={() => fileRef.current?.click()}>
+            <button type="button" className="dropzone" onClick={() => fileRef.current?.click()}>
               Click to choose a photo
-            </div>
+            </button>
           )}
-          <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => onFile(e.target.files[0])} />
+          <input
+            ref={fileRef}
+            id="photo-file-input"
+            type="file"
+            accept="image/*"
+            aria-label="Choose a photo to submit"
+            style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0,0,0,0)" }}
+            onChange={(e) => onFile(e.target.files[0])}
+          />
           {previewUrl && (
             <button className="btn ghost" onClick={() => fileRef.current?.click()}>
               Replace photo
@@ -110,20 +118,20 @@ export default function Upload({ me }) {
         </div>
         <div className="col" style={{ gap: 18 }}>
           <div className="col" style={{ gap: 6 }}>
-            <label className="eyebrow">
+            <label className="eyebrow" htmlFor="photo-title">
               Title <span className="muted">— optional</span>
             </label>
-            <input className="text" placeholder="Untitled" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <input id="photo-title" className="text" placeholder="Untitled" value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
           <div className="col" style={{ gap: 6 }}>
-            <label className="eyebrow">
+            <label className="eyebrow" htmlFor="photo-caption">
               Artist's note <span className="muted">— optional, hidden until reveal</span>
             </label>
-            <textarea className="text" rows={4} placeholder="Two sentences, if any. Why this picture, this week?" value={caption} onChange={(e) => setCaption(e.target.value)} />
+            <textarea id="photo-caption" className="text" rows={4} placeholder="Two sentences, if any. Why this picture, this week?" value={caption} onChange={(e) => setCaption(e.target.value)} />
           </div>
           <div className="col" style={{ gap: 6 }}>
-            <label className="eyebrow">Where</label>
-            <input className="text" placeholder="Where was this taken?" value={note} onChange={(e) => setNote(e.target.value)} />
+            <label className="eyebrow" htmlFor="photo-where">Where</label>
+            <input id="photo-where" className="text" placeholder="Where was this taken?" value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
           <div className="card flat" style={{ background: "var(--bg-2)", padding: 16 }}>
             <div className="kv">
@@ -138,7 +146,7 @@ export default function Upload({ me }) {
             </div>
           </div>
           {error && (
-            <div className="muted" style={{ color: "var(--t-emotion)", fontSize: 12 }}>
+            <div role="alert" className="muted" style={{ color: "var(--t-emotion)", fontSize: 12 }}>
               {error}
             </div>
           )}

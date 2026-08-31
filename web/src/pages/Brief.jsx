@@ -30,9 +30,9 @@ export default function Brief() {
   return (
     <div className="page" style={{ maxWidth: 980 }}>
       <div className="row between" style={{ marginBottom: 18 }}>
-        <div className="eyebrow">
+        <p className="eyebrow">
           Brief · Week {String(cur.number).padStart(2, "0")} · Season {cur.season}
-        </div>
+        </p>
         <Link className="btn ghost" to="/">
           ← Back to dashboard
         </Link>
@@ -40,11 +40,11 @@ export default function Brief() {
       <div className="row" style={{ gap: 14, marginBottom: 22 }}>
         <TypeRow types={cur.types} />
       </div>
-      <div className="headline-xl serif italic rise" style={{ marginBottom: 28 }}>
+      <h1 className="headline-xl serif italic rise" style={{ marginBottom: 28 }}>
         {cur.brief}
-      </div>
+      </h1>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 36, marginTop: 36 }}>
+      <div className="grid-2-wide" style={{ marginTop: 36 }}>
         <div>
           <SectionLabel>From the Judge</SectionLabel>
           <p className="serif italic" style={{ fontSize: 20, lineHeight: 1.45, marginTop: 16, color: "var(--ink-2)", maxWidth: "44ch" }}>
@@ -95,7 +95,7 @@ export default function Brief() {
               </span>
             </button>
             {error && (
-              <div className="muted" style={{ color: "var(--t-emotion)", fontSize: 12, marginTop: 8 }}>
+              <div role="alert" className="muted" style={{ color: "var(--t-emotion)", fontSize: 12, marginTop: 8 }}>
                 {error}
               </div>
             )}

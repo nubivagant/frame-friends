@@ -15,10 +15,10 @@ export default function Results({ me }) {
   if (!cur.revealed) {
     return (
       <div className="page" style={{ maxWidth: 640, textAlign: "center", paddingTop: 100 }}>
-        <div className="eyebrow">Reveal · Week {String(cur.number).padStart(2, "0")}</div>
-        <div className="headline-l serif italic" style={{ marginTop: 14 }}>
+        <p className="eyebrow">Reveal · Week {String(cur.number).padStart(2, "0")}</p>
+        <h1 className="headline-l serif italic" style={{ marginTop: 14 }}>
           Not revealed yet.
-        </div>
+        </h1>
         <p className="muted" style={{ marginTop: 12 }}>
           Reveal opens once both of you submit, or at the deadline.
         </p>
@@ -51,9 +51,9 @@ export default function Results({ me }) {
   return (
     <div className="page">
       <div className="row between" style={{ marginBottom: 18 }}>
-        <div className="eyebrow">
+        <p className="eyebrow">
           Results · Week {String(cur.number).padStart(2, "0")} · Season {cur.season}
-        </div>
+        </p>
       </div>
 
       <div className="row between" style={{ alignItems: "flex-start", marginBottom: 14 }}>
@@ -61,18 +61,19 @@ export default function Results({ me }) {
           <div className="row" style={{ gap: 10, marginBottom: 12 }}>
             <TypeRow types={cur.types} />
           </div>
-          <div className="headline-l serif italic" style={{ maxWidth: "26ch" }}>
+          <h1 className="headline-l serif italic" style={{ maxWidth: "26ch" }}>
             "{cur.brief}"
-          </div>
+          </h1>
         </div>
         <Seal n={cur.number} season={cur.season} color="var(--t-emotion)" />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 1fr", gap: 18, alignItems: "stretch", marginTop: 36 }}>
+      <div className="grid-vs" style={{ marginTop: 36 }}>
         <div className="col rise">
           <Photo
             src={mySub.photoUrl}
             ratio="4 / 5"
+            alt={`${meP.name}'s photo${mySub.title ? `: "${mySub.title}"` : ""}`}
             label={
               <>
                 <span>{mySub.title ? `"${mySub.title}"` : "Untitled"}</span>
@@ -86,11 +87,12 @@ export default function Results({ me }) {
             </div>
           )}
         </div>
-        <div className="vs-sep italic">vs</div>
+        <div className="vs-sep italic" aria-hidden="true">vs</div>
         <div className="col rise d2">
           <Photo
             src={theirSub.photoUrl}
             ratio="4 / 5"
+            alt={`${them.name}'s photo${theirSub.title ? `: "${theirSub.title}"` : ""}`}
             label={
               <>
                 <span>{theirSub.title ? `"${theirSub.title}"` : "Untitled"}</span>
@@ -108,10 +110,10 @@ export default function Results({ me }) {
 
       {cur.verdict && (
         <div className="card" style={{ marginTop: 40 }}>
-          <div className="eyebrow" style={{ marginBottom: 12 }}>
+          <h2 className="eyebrow" style={{ marginBottom: 12 }}>
             {cur.verdict.judgeName}'s verdict
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+          </h2>
+          <div className="grid-2">
             <p className="serif" style={{ fontSize: 16, lineHeight: 1.5, color: "var(--ink-2)" }}>
               {cur.verdict.critique[String(mySub.id)]}
             </p>
@@ -127,17 +129,17 @@ export default function Results({ me }) {
       )}
 
       <div className="card" style={{ marginTop: 24 }}>
-        <div className="eyebrow" style={{ marginBottom: 12 }}>
+        <h2 className="eyebrow" style={{ marginBottom: 12 }}>
           Mutual rating — rate each other's photo
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+        </h2>
+        <div className="grid-2">
           <div>
             {theirRating && (
-              <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
+              <p className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
                 {them.name} rated your photo: {sumScores(theirRating.scores)} / 50
-              </div>
+              </p>
             )}
-            {!theirRating && <div className="muted" style={{ fontSize: 13 }}>Waiting on {them.name} to rate your photo.</div>}
+            {!theirRating && <p className="muted" style={{ fontSize: 13 }}>Waiting on {them.name} to rate your photo.</p>}
           </div>
           <div>
             <RatingForm title={`Rate ${them.name}'s photo`} initial={myRating} saving={busy} onSubmit={submitRating} />
@@ -147,32 +149,32 @@ export default function Results({ me }) {
 
       {!result.pending && (
         <div className="card" style={{ marginTop: 24, padding: 32 }}>
-          <div className="eyebrow" style={{ marginBottom: 12 }}>
+          <h2 className="eyebrow" style={{ marginBottom: 12 }}>
             Standing result
-          </div>
+          </h2>
           <div className="row between" style={{ flexWrap: "wrap", gap: 24 }}>
             <div className="row" style={{ gap: 16 }}>
               {winnerPlayer && <Avatar player={winnerPlayer} size="lg" />}
               <div>
-                <div className="eyebrow">This week</div>
-                <div className="serif" style={{ fontSize: 32, marginTop: 4 }}>
+                <p className="eyebrow">This week</p>
+                <p className="serif" style={{ fontSize: 32, marginTop: 4 }}>
                   {winnerPlayer ? `${winnerPlayer.name} wins` : "It's a tie"}
-                </div>
-                <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>
+                </p>
+                <p className="muted" style={{ fontSize: 13, marginTop: 6 }}>
                   {result.scores[mySub.id] ?? 0} – {result.scores[theirSub.id] ?? 0}
-                </div>
+                </p>
               </div>
             </div>
             {result.awards.length > 0 && (
               <div className="row" style={{ gap: 12 }}>
                 {result.awards.map((a) => (
                   <div className="card flat" key={a} style={{ padding: "12px 16px", borderColor: "var(--line-2)" }}>
-                    <div className="eyebrow" style={{ color: "var(--t-light)" }}>
+                    <p className="eyebrow" style={{ color: "var(--t-light)" }}>
                       Special Distinction
-                    </div>
-                    <div className="serif italic" style={{ fontSize: 18, marginTop: 4 }}>
+                    </p>
+                    <p className="serif italic" style={{ fontSize: 18, marginTop: 4 }}>
                       "{a}"
-                    </div>
+                    </p>
                   </div>
                 ))}
               </div>

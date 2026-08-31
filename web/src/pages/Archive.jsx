@@ -20,22 +20,22 @@ export default function Archive() {
     <div className="page">
       <div className="row between" style={{ marginBottom: 18 }}>
         <div>
-          <div className="eyebrow">Archive · Season {state.currentWeek.season}</div>
-          <div className="headline-l serif italic" style={{ marginTop: 10 }}>
+          <p className="eyebrow">Archive · Season {state.currentWeek.season}</p>
+          <h1 className="headline-l serif italic" style={{ marginTop: 10 }}>
             The duel record.
-          </div>
+          </h1>
         </div>
       </div>
 
-      <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 24 }}>
-        <button onClick={() => setFilter("all")} className="chip" style={{ cursor: "pointer", borderColor: filter === "all" ? "var(--ink)" : undefined }}>
+      <div className="row" role="group" aria-label="Filter archive by type" style={{ gap: 8, flexWrap: "wrap", marginBottom: 24 }}>
+        <button onClick={() => setFilter("all")} aria-pressed={filter === "all"} className="chip" style={{ cursor: "pointer", borderColor: filter === "all" ? "var(--ink)" : undefined }}>
           All · {weeks.length}
         </button>
         {TYPE_IDS.map((t) => {
           const count = weeks.filter((w) => w.types.includes(t)).length;
           if (!count) return null;
           return (
-            <button key={t} onClick={() => setFilter(t)} className={`chip t-${t}`} style={{ cursor: "pointer", borderColor: filter === t ? "currentColor" : undefined }}>
+            <button key={t} onClick={() => setFilter(t)} aria-pressed={filter === t} className={`chip t-${t}`} style={{ cursor: "pointer", borderColor: filter === t ? "currentColor" : undefined }}>
               {t[0].toUpperCase() + t.slice(1)} · {count}
             </button>
           );
@@ -43,16 +43,18 @@ export default function Archive() {
       </div>
 
       {!shown.length && (
-        <div className="muted" style={{ textAlign: "center", padding: "60px 0" }}>
+        <p className="muted" style={{ textAlign: "center", padding: "60px 0" }}>
           No rounds here yet.
-        </div>
+        </p>
       )}
 
-      <div className="archive-grid">
+      <ul className="archive-grid" style={{ listStyle: "none", margin: 0, padding: 0 }}>
         {shown.map((w) => (
-          <ArchiveCard key={w.id} week={w} players={state.players} />
+          <li key={w.id}>
+            <ArchiveCard week={w} players={state.players} />
+          </li>
         ))}
-      </div>
+      </ul>
     </div>
   );
 }
@@ -64,11 +66,19 @@ function ArchiveCard({ week, players }) {
   return (
     <div className="col" style={{ gap: 10 }}>
       <div className="row" style={{ gap: 6, alignItems: "stretch" }}>
-        {week.submissions.map((s) => (
-          <div key={s.id} style={{ flex: 1 }}>
-            <Photo src={s.photoUrl} ratio="4 / 5" corner={week.result.winnerSubmissionId === s.id ? "WIN" : null} />
-          </div>
-        ))}
+        {week.submissions.map((s) => {
+          const p = players.find((pl) => pl.id === s.userId);
+          return (
+            <div key={s.id} style={{ flex: 1, minWidth: 90 }}>
+              <Photo
+                src={s.photoUrl}
+                ratio="4 / 5"
+                alt={`${p ? p.name : "Player"}'s photo, week ${week.number}`}
+                corner={week.result.winnerSubmissionId === s.id ? "WIN" : null}
+              />
+            </div>
+          );
+        })}
       </div>
       <div className="row between" style={{ marginTop: 4 }}>
         <span className="mono" style={{ fontSize: 10, letterSpacing: ".18em", color: "var(--muted)", textTransform: "uppercase" }}>
@@ -76,9 +86,9 @@ function ArchiveCard({ week, players }) {
         </span>
         <TypeChip type={week.types[0]} />
       </div>
-      <div className="serif italic" style={{ fontSize: 16, color: "var(--ink-2)", lineHeight: 1.3 }}>
+      <p className="serif italic" style={{ fontSize: 16, color: "var(--ink-2)", lineHeight: 1.3, margin: 0 }}>
         "{week.brief}"
-      </div>
+      </p>
       <div className="row between" style={{ fontSize: 12, color: "var(--muted)" }}>
         <span>
           {week.result.pending
