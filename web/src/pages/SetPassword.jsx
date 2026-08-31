@@ -31,12 +31,12 @@ export default function SetPassword() {
   return (
     <div className="gate">
       <div className="gate-card">
-        <div className="eyebrow">Frame Friends</div>
-        <div className="headline-l serif italic" style={{ marginTop: 10 }}>
+        <p className="eyebrow">Frame Friends</p>
+        <h1 className="headline-l serif italic" style={{ marginTop: 10 }}>
           Choose a password.
-        </div>
+        </h1>
         {done ? (
-          <div className="card" style={{ marginTop: 24 }}>
+          <div className="card" style={{ marginTop: 24 }} role="status">
             <p className="muted">Password set. You can log in now.</p>
             <button className="btn primary" style={{ marginTop: 16 }} onClick={() => navigate("/login")}>
               Go to login →
@@ -45,15 +45,32 @@ export default function SetPassword() {
         ) : (
           <form className="card col" style={{ marginTop: 24, gap: 14 }} onSubmit={submit}>
             <div className="col" style={{ gap: 6 }}>
-              <label className="eyebrow">New password</label>
-              <input className="text" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} autoFocus />
+              <label className="eyebrow" htmlFor="new-password">New password</label>
+              <input
+                id="new-password"
+                className="text"
+                type="password"
+                autoComplete="new-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoFocus
+              />
             </div>
             <div className="col" style={{ gap: 6 }}>
-              <label className="eyebrow">Confirm password</label>
-              <input className="text" type="password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+              <label className="eyebrow" htmlFor="confirm-password">Confirm password</label>
+              <input
+                id="confirm-password"
+                className="text"
+                type="password"
+                autoComplete="new-password"
+                required
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+              />
             </div>
             {error && (
-              <div className="muted" style={{ color: "var(--t-emotion)", fontSize: 13 }}>
+              <div role="alert" className="muted" style={{ color: "var(--t-emotion)", fontSize: 13 }}>
                 {error}
               </div>
             )}

@@ -31,15 +31,15 @@ export default function Dashboard({ me }) {
     <div className="page">
       <div className="row between" style={{ alignItems: "flex-start", marginBottom: 14, flexWrap: "wrap", gap: 12 }}>
         <div>
-          <div className="eyebrow">
+          <p className="eyebrow">
             This Week · S{cur.season} · W{String(cur.number).padStart(2, "0")}
-          </div>
-          <div className="serif italic rise" style={{ fontSize: 32, lineHeight: 1.1, marginTop: 8 }}>
+          </p>
+          <h1 className="serif italic rise" style={{ fontSize: 32, lineHeight: 1.1, marginTop: 8, fontWeight: 400 }}>
             {headline}
-          </div>
-          <div className="muted" style={{ marginTop: 6, fontSize: 13, maxWidth: "56ch" }}>
+          </h1>
+          <p className="muted" style={{ marginTop: 6, fontSize: 13, maxWidth: "56ch" }}>
             {sub}
-          </div>
+          </p>
         </div>
         <Countdown deadline={cur.deadline} />
       </div>
@@ -49,12 +49,12 @@ export default function Dashboard({ me }) {
         <div className="row" style={{ gap: 10, marginBottom: 18 }}>
           <TypeRow types={cur.types} />
         </div>
-        <div className="headline-xl serif italic" style={{ maxWidth: "20ch" }}>
+        <p className="headline-xl serif italic" style={{ maxWidth: "20ch" }}>
           {cur.brief}
-        </div>
-        <div className="muted" style={{ marginTop: 18, maxWidth: "60ch", fontSize: 14, lineHeight: 1.6 }}>
+        </p>
+        <p className="muted" style={{ marginTop: 18, maxWidth: "60ch", fontSize: 14, lineHeight: 1.6 }}>
           {cur.inspiration}
-        </div>
+        </p>
         <div className="row between" style={{ marginTop: 28, gap: 16, flexWrap: "wrap" }}>
           <Link className="btn ghost" to="/brief">
             Read full brief
@@ -74,10 +74,10 @@ export default function Dashboard({ me }) {
       {cur.revealed && (
         <div style={{ marginBottom: 48 }}>
           <SectionLabel>Reveal · Week {String(cur.number).padStart(2, "0")}</SectionLabel>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 1fr", gap: 18, marginTop: 16 }}>
-            <Photo src={mySub.photoUrl} ratio="4 / 5" label={<span>{meP.name}</span>} />
-            <div className="vs-sep italic">vs</div>
-            <Photo src={theirSub.photoUrl} ratio="4 / 5" label={<span>{them.name}</span>} />
+          <div className="grid-vs" style={{ marginTop: 16 }}>
+            <Photo src={mySub.photoUrl} ratio="4 / 5" alt={`${meP.name}'s photo`} label={<span>{meP.name}</span>} />
+            <div className="vs-sep italic" aria-hidden="true">vs</div>
+            <Photo src={theirSub.photoUrl} ratio="4 / 5" alt={`${them.name}'s photo`} label={<span>{them.name}</span>} />
           </div>
           <div className="row" style={{ marginTop: 16, justifyContent: "center" }}>
             <Link className="btn primary" to="/reveal">
@@ -87,10 +87,10 @@ export default function Dashboard({ me }) {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 32, marginBottom: 48 }}>
+      <div style={{ marginBottom: 48 }}>
         <div>
           <SectionLabel>Standings</SectionLabel>
-          <div className="card" style={{ marginTop: 16 }}>
+          <div className="card" style={{ marginTop: 16, maxWidth: 560 }}>
             {state.players.map((p, i) => (
               <div className="lb-row" key={p.id}>
                 <span className="pos">{String(i + 1).padStart(2, "0")}</span>

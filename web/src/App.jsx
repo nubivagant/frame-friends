@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import React, { useEffect, useRef, useState } from "react";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { api } from "./api";
 import { GameProvider } from "./GameContext";
 import Layout from "./Layout";
@@ -13,18 +13,40 @@ import Archive from "./pages/Archive";
 import Players from "./pages/Players";
 import Settings from "./pages/Settings";
 
-export default function App() {
-  const [me, setMe] = useState(undefined); // undefined = loading, null = logged out
+const TITLES = {
+  "/": "Home",
+  "/brief": "This Week",
+  "/upload": "Upload",
+  "/reveal": "Reveal",
+  "/archive": "Archive",
+  "/players": "Players",
+  "/settings": "Settings",
+  "/login": "Log in",
+  "/set-password": "Set password",
+};
+
+// SPA route changes don't get a real page load, so screen-reader users lose
+// the two cues a normal navigation gives them: an updated document title and
+// a reset focus point. Restore both on every route change.
+function useRouteAnnouncement() {
+  const location = useLocation();
+  const isFirstRender = useRef(true);
 
   useEffect(() => {
-    api
-      .me()
-      .then(({ user }) => setMe(user))
-      .catch(() => setMe(null));
-  }, []);
+    const label = TITLES[location.pathname] || "";
+    document.title = label ? `${label} — Frame Friends` : "Frame Friends — A weekly photography ritual for two";
 
-  if (me === undefined) return null;
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    const main = document.getElementById("main-content");
+    if (main) main.focus();
+  }, [location.pathname]);
+}
 
+function AppRoutes({ me, setMe }) {
+  useRouteAnnouncement();
   return (
     <Routes>
       <Route path="/set-password" element={<SetPassword />} />
@@ -57,4 +79,19 @@ export default function App() {
       />
     </Routes>
   );
+}
+
+export default function App() {
+  const [me, setMe] = useState(undefined); // undefined = loading, null = logged out
+
+  useEffect(() => {
+    api
+      .me()
+      .then(({ user }) => setMe(user))
+      .catch(() => setMe(null));
+  }, []);
+
+  if (me === undefined) return null;
+
+  return <AppRoutes me={me} setMe={setMe} />;
 }

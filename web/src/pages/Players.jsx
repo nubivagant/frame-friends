@@ -13,10 +13,10 @@ export default function Players({ me }) {
   return (
     <div className="page">
       <div className="row between" style={{ marginBottom: 18 }}>
-        <div className="eyebrow">Player Card</div>
-        <div className="row" style={{ gap: 8 }}>
+        <p className="eyebrow">Player Card</p>
+        <div className="row" role="group" aria-label="Choose a player" style={{ gap: 8 }}>
           {state.players.map((p) => (
-            <button key={p.id} className="btn ghost" onClick={() => setPid(p.id)} style={{ borderColor: pid === p.id ? "var(--ink)" : "var(--line)" }}>
+            <button key={p.id} aria-pressed={pid === p.id} className="btn ghost" onClick={() => setPid(p.id)} style={{ borderColor: pid === p.id ? "var(--ink)" : "var(--line)" }}>
               <Avatar player={p} size="xs" /> {p.name}
             </button>
           ))}
@@ -29,21 +29,21 @@ export default function Players({ me }) {
             <Avatar player={player} size="xl" />
             <div>
               {player.title && (
-                <div className="eyebrow" style={{ color: accent }}>
+                <p className="eyebrow" style={{ color: accent }}>
                   {player.title}
-                </div>
+                </p>
               )}
-              <div className="serif" style={{ fontSize: 48, lineHeight: 1, letterSpacing: "-0.015em", marginTop: 8 }}>
+              <h1 className="serif" style={{ fontSize: 48, lineHeight: 1, letterSpacing: "-0.015em", marginTop: 8 }}>
                 {player.name}
-              </div>
+              </h1>
               {player.bio && (
-                <div className="muted" style={{ marginTop: 8, fontSize: 13, maxWidth: "44ch", fontStyle: "italic" }}>
+                <p className="muted" style={{ marginTop: 8, fontSize: 13, maxWidth: "44ch", fontStyle: "italic" }}>
                   "{player.bio}"
-                </div>
+                </p>
               )}
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, auto)", gap: 32 }}>
+          <div className="grid-stats-4">
             <Stat v={player.standings.wins} l="Wins" />
             <Stat v={player.standings.points} l="Points" />
             <Stat v={player.standings.avg} l="Avg / 50" />
@@ -58,23 +58,23 @@ export default function Players({ me }) {
           <div className="row" style={{ gap: 14 }}>
             <Avatar player={player} size="lg" />
             <div>
-              <div className="eyebrow">{player.name}</div>
-              <div className="serif" style={{ fontSize: 36 }}>
+              <p className="eyebrow">{player.name}</p>
+              <p className="serif" style={{ fontSize: 36 }}>
                 {player.standings.wins}
                 <span className="muted serif" style={{ fontSize: 24 }}> wins</span>
-              </div>
+              </p>
             </div>
           </div>
-          <div className="serif italic" style={{ fontSize: 28 }}>
+          <div className="serif italic" style={{ fontSize: 28 }} aria-hidden="true">
             vs
           </div>
           <div className="row" style={{ gap: 14 }}>
             <div style={{ textAlign: "right" }}>
-              <div className="eyebrow">{other.name}</div>
-              <div className="serif" style={{ fontSize: 36 }}>
+              <p className="eyebrow">{other.name}</p>
+              <p className="serif" style={{ fontSize: 36 }}>
                 {other.standings.wins}
                 <span className="muted serif" style={{ fontSize: 24 }}> wins</span>
-              </div>
+              </p>
             </div>
             <Avatar player={other} size="lg" />
           </div>
@@ -86,9 +86,9 @@ export default function Players({ me }) {
 
 function Stat({ v, l }) {
   return (
-    <div className="stat">
-      <div className="v">{v}</div>
-      <div className="l">{l}</div>
+    <div className="stat" aria-label={`${v} ${l}`}>
+      <div className="v" aria-hidden="true">{v}</div>
+      <div className="l" aria-hidden="true">{l}</div>
     </div>
   );
 }
