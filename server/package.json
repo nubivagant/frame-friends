@@ -1,0 +1,38 @@
+{
+  "name": "frame-friends-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node src/index.js",
+    "start": "prisma migrate deploy && node src/seed.js && node src/index.js",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:generate": "prisma generate",
+    "seed": "node src/seed.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@prisma/client": "^5.22.0",
+    "bcryptjs": "^2.4.3",
+    "connect-pg-simple": "^10.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "express-session": "^1.18.1",
+    "multer": "^2.0.1",
+    "node-cron": "^3.0.3",
+    "pg": "^8.13.1",
+    "resend": "^4.0.1",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "embedded-postgres": "^18.4.0-beta.17",
+    "prisma": "^5.22.0"
+  },
+  "allowScripts": {
+    "prisma@5.22.0": true,
+    "sharp@0.33.5": true,
+    "@prisma/engines@5.22.0": true,
+    "@prisma/client@5.22.0": true,
+    "@embedded-postgres/darwin-arm64@18.4.0-beta.17": true
+  }
+}
