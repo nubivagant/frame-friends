@@ -14,6 +14,7 @@ export default function Dashboard({ me }) {
   const myStreak = meP?.standings?.participationStreak || 0;
 
   let headline, sub;
+  const othersOutstanding = match ? match.totalCount - match.submittedCount - (match.mySubmitted ? 0 : 1) : 0;
   if (!match || match.isBye) {
     headline = "You're on the bench this week.";
     sub = state.joinableMatches.length
@@ -21,15 +22,17 @@ export default function Dashboard({ me }) {
       : `No pairing for you this round. Back in for the brief that opens ${fmtDeadlineLabel(cur.deadline)}.`;
   } else if (!match.mySubmitted) {
     headline = "Your move.";
-    sub = match.opponentSubmitted
-      ? `Your opponent already sealed their shot. The brief locks ${fmtDeadlineLabel(cur.deadline)}.`
-      : `Neither of you has submitted yet. The brief locks ${fmtDeadlineLabel(cur.deadline)}.`;
-  } else if (!match.opponentSubmitted) {
-    headline = "Sealed. Waiting on your opponent.";
-    sub = `Reveal opens the moment you both submit, or at ${fmtDeadlineLabel(cur.deadline)}.`;
+    sub =
+      othersOutstanding === 0
+        ? `Everyone else has sealed their shot. The brief locks ${fmtDeadlineLabel(cur.deadline)}.`
+        : `The brief locks ${fmtDeadlineLabel(cur.deadline)}.`;
+  } else if (match.submittedCount < match.totalCount) {
+    const waiting = match.totalCount - match.submittedCount;
+    headline = `Sealed. Waiting on ${waiting} more.`;
+    sub = `Reveal opens the moment everyone submits, or at ${fmtDeadlineLabel(cur.deadline)}.`;
   } else {
-    headline = "Both sealed. Reveal is open.";
-    sub = "Rate each other's photo, or bring in a verdict.";
+    headline = "Everyone's sealed. Reveal is open.";
+    sub = match.totalCount > 2 ? "Rate everyone else's photo, or bring in a verdict." : "Rate each other's photo, or bring in a verdict.";
   }
 
   return (
@@ -52,7 +55,7 @@ export default function Dashboard({ me }) {
           <p className="muted" style={{ marginTop: 6, fontSize: 13, maxWidth: "56ch" }}>
             {sub}
           </p>
-          {match && !match.isBye && !match.opponentSubmitted && <NudgeButton match={match} />}
+          {match && !match.isBye && othersOutstanding > 0 && <NudgeButton />}
           {match && !match.isBye && match.canForfeit && <ForfeitButton match={match} reload={reload} />}
           {state.joinableMatches.length > 0 && (!match || match.isBye) && <JoinButtons matches={state.joinableMatches} reload={reload} />}
         </div>
@@ -91,21 +94,29 @@ export default function Dashboard({ me }) {
       {match && match.revealed && !match.isBye && (
         <div style={{ marginBottom: 48 }}>
           <SectionLabel>Reveal · Week {String(cur.number).padStart(2, "0")}</SectionLabel>
-          <div className="grid-vs" style={{ marginTop: 16 }}>
-            <Photo
-              src={match.submissions.find((s) => s.userId === me.id)?.photoUrl}
-              ratio="4 / 5"
-              alt={`${meP.name}'s photo`}
-              label={<span>{meP.name}</span>}
-            />
-            <div className="vs-sep italic" aria-hidden="true">vs</div>
-            <Photo
-              src={match.submissions.find((s) => s.userId !== me.id)?.photoUrl}
-              ratio="4 / 5"
-              alt={`${match.opponent?.name || "Opponent"}'s photo`}
-              label={<span>{match.opponent?.name || "Opponent"}</span>}
-            />
-          </div>
+          {match.submissions.length === 2 ? (
+            <div className="grid-vs" style={{ marginTop: 16 }}>
+              <Photo src={match.submissions.find((s) => s.userId === me.id)?.photoUrl} ratio="4 / 5" alt={`${meP.name}'s photo`} label={<span>{meP.name}</span>} />
+              <div className="vs-sep italic" aria-hidden="true">vs</div>
+              <Photo
+                src={match.submissions.find((s) => s.userId !== me.id)?.photoUrl}
+                ratio="4 / 5"
+                alt={`${match.participants[0]?.name || "Opponent"}'s photo`}
+                label={<span>{match.participants[0]?.name || "Opponent"}</span>}
+              />
+            </div>
+          ) : (
+            <div className="row" style={{ marginTop: 16, gap: 10, flexWrap: "wrap" }}>
+              {match.submissions.map((s) => {
+                const name = s.userId === me.id ? meP.name : match.participants.find((p) => p.id === s.userId)?.name || "Someone";
+                return (
+                  <div key={s.id} style={{ flex: "1 1 160px", minWidth: 140 }}>
+                    <Photo src={s.photoUrl} ratio="4 / 5" alt={`${name}'s photo`} label={<span>{name}</span>} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="row" style={{ marginTop: 16, justifyContent: "center" }}>
             <Link className="btn primary" to="/reveal">
               Open reveal & judging →
@@ -153,7 +164,7 @@ export default function Dashboard({ me }) {
   );
 }
 
-function NudgeButton({ match }) {
+function NudgeButton() {
   const [state, setState] = useState("idle"); // idle | sending | sent | error
   const [error, setError] = useState("");
 
@@ -172,7 +183,7 @@ function NudgeButton({ match }) {
   if (state === "sent") {
     return (
       <p className="muted" style={{ marginTop: 10, fontSize: 12 }} role="status">
-        Nudged your opponent.
+        Nudged whoever's still out.
       </p>
     );
   }
@@ -180,7 +191,7 @@ function NudgeButton({ match }) {
   return (
     <div style={{ marginTop: 10 }}>
       <button className="btn ghost" style={{ fontSize: 12, padding: "6px 12px" }} disabled={state === "sending"} onClick={send}>
-        {state === "sending" ? "…" : "Nudge your opponent"}
+        {state === "sending" ? "…" : "Nudge whoever's outstanding"}
       </button>
       {state === "error" && (
         <p role="alert" className="muted" style={{ color: "var(--t-emotion)", fontSize: 11, marginTop: 6 }}>

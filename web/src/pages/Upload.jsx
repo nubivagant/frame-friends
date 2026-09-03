@@ -43,22 +43,22 @@ export default function Upload({ me }) {
       <div className="page" style={{ maxWidth: 720, textAlign: "center", paddingTop: 100 }}>
         <p className="eyebrow rise">Submission received</p>
         <h1 className="headline-l serif italic rise d1" style={{ marginTop: 14, marginBottom: 24 }}>
-          Sealed. Held until both arrive.
+          Sealed. Held until everyone arrives.
         </h1>
         <div className="rise d2" style={{ display: "inline-block", margin: "0 auto" }}>
           <Seal n={cur.number} season={cur.season} color="var(--t-emotion)" />
         </div>
         <p className="muted rise d3" style={{ maxWidth: "44ch", margin: "28px auto 0", lineHeight: 1.7 }}>
-          {match.opponentSubmitted
-            ? "Both of you are in — head to Reveal."
-            : `Your opponent hasn't submitted yet. Reveal opens the moment they do, or at ${fmtDeadlineLabel(cur.deadline)}.`}
+          {match.submittedCount >= match.totalCount
+            ? "Everyone's in — head to Reveal."
+            : `Waiting on ${match.totalCount - match.submittedCount} more. Reveal opens the moment everyone's in, or at ${fmtDeadlineLabel(cur.deadline)}.`}
         </p>
         <div className="row rise d4" style={{ justifyContent: "center", gap: 10, marginTop: 36 }}>
           <button className="btn ghost" onClick={() => setForceEdit(true)}>
             Replace before deadline
           </button>
-          <button className="btn primary" onClick={() => navigate(match.opponentSubmitted ? "/reveal" : "/")}>
-            {match.opponentSubmitted ? "Open reveal" : "Back to dashboard"} <span className="arrow">→</span>
+          <button className="btn primary" onClick={() => navigate(match.submittedCount >= match.totalCount ? "/reveal" : "/")}>
+            {match.submittedCount >= match.totalCount ? "Open reveal" : "Back to dashboard"} <span className="arrow">→</span>
           </button>
         </div>
       </div>

@@ -14,7 +14,7 @@ export default function Archive() {
   }, []);
 
   if (!matches || !state) return null;
-  const played = matches.filter((m) => m.playerAId && m.playerBId); // skip byes / never-filled forfeits
+  const played = matches.filter((m) => m.participants.filter((p) => p.userId != null).length >= 2); // skip byes / never-filled forfeits
   const shown = filter === "all" ? played : played.filter((m) => m.week.types.includes(filter));
 
   return (
@@ -23,7 +23,7 @@ export default function Archive() {
         <div>
           <p className="eyebrow">Archive · Season {state.currentWeek.season}</p>
           <h1 className="headline-l serif italic" style={{ marginTop: 10 }}>
-            The duel record.
+            The round record.
           </h1>
         </div>
       </div>
@@ -63,8 +63,7 @@ export default function Archive() {
 function ArchiveCard({ match, players }) {
   const winnerPlayerId = match.result.winnerSubmissionId != null ? match.submissions.find((s) => s.id === match.result.winnerSubmissionId)?.userId : null;
   const winner = winnerPlayerId ? players.find((p) => p.id === winnerPlayerId) : null;
-  const playerA = players.find((p) => p.id === match.playerAId);
-  const playerB = players.find((p) => p.id === match.playerBId);
+  const matchPlayers = match.participants.filter((p) => p.userId != null).map((p) => players.find((pl) => pl.id === p.userId));
 
   return (
     <div className="col" style={{ gap: 10 }}>
@@ -93,7 +92,7 @@ function ArchiveCard({ match, players }) {
         "{match.week.brief}"
       </p>
       <p className="muted" style={{ fontSize: 11, margin: 0 }}>
-        {playerA?.name || "?"} vs {playerB?.name || "?"}
+        {matchPlayers.map((p) => p?.name || "?").join(" vs ")}
       </p>
       <div className="row between" style={{ fontSize: 12, color: "var(--muted)" }}>
         <span>
