@@ -3,13 +3,21 @@ const { prisma } = require("./db");
 const { pickBriefFor, sumScores, computeAwards, nextOccurrence, nextOccurrenceWithCadence } = require("./game");
 const { sendPushToUsers } = require("./push");
 
-const MATCH_INCLUDE = { submissions: true, ratings: true, verdict: true };
+const MATCH_INCLUDE = { participants: true, submissions: true, ratings: true, verdict: true };
 const WEEK_INCLUDE = { matches: { include: MATCH_INCLUDE } };
 
+const GROUP_MAX_PLAYERS = 4; // groups run through this many active players; random 1v1 pairing kicks in above it
+
+function occupiedParticipants(match) {
+  return match.participants.filter((p) => p.userId != null);
+}
+
 /** Combined score per submission — average of the AI judge's score and the
- *  other player's rating, falling back to whichever one exists if the other
- *  hasn't landed by the time this is checked. A match only has a real
- *  (non-pending) result once every submission has at least one of the two. */
+ *  mean of however many peer ratings that submission got (0 to N-1 in a
+ *  group), falling back to whichever source exists if the other hasn't
+ *  landed yet. A match only has a real (non-pending) result once every
+ *  submission that exists has at least one of the two. A duel is just the
+ *  N=2 case of this — nothing here special-cases it. */
 function computeMatchResult(match) {
   const subs = match.submissions;
   if (subs.length < 2) return { winnerSubmissionId: null, scores: {}, awards: [], pending: true };
@@ -17,9 +25,9 @@ function computeMatchResult(match) {
   const scores = {};
   subs.forEach((s) => {
     const aiScores = match.verdict ? match.verdict.scores[String(s.id)] : null;
-    const peerRating = match.ratings.find((r) => r.raterId !== s.userId); // the OTHER player rated s's photo
+    const peerRatings = match.ratings.filter((r) => r.submissionId === s.id);
     const aiSum = aiScores ? sumScores(aiScores) : null;
-    const peerSum = peerRating ? sumScores(peerRating.scores) : null;
+    const peerSum = peerRatings.length ? peerRatings.reduce((sum, r) => sum + sumScores(r.scores), 0) / peerRatings.length : null;
     const combined = aiSum != null && peerSum != null ? (aiSum + peerSum) / 2 : aiSum != null ? aiSum : peerSum;
     scores[s.id] = combined == null ? null : Math.round(combined * 10) / 10;
   });
@@ -28,35 +36,38 @@ function computeMatchResult(match) {
     return { winnerSubmissionId: null, scores: {}, awards: [], pending: true };
   }
 
-  const [a, b] = subs;
+  const ranked = [...subs].sort((a, b) => scores[b.id] - scores[a.id]);
+  const topScore = scores[ranked[0].id];
+  const tiedForFirst = ranked.filter((s) => scores[s.id] === topScore);
+
   let winnerSubmissionId = null;
   let awards = [];
-  if (scores[a.id] !== scores[b.id]) {
-    winnerSubmissionId = scores[a.id] > scores[b.id] ? a.id : b.id;
-    const loserId = winnerSubmissionId === a.id ? b.id : a.id;
+  if (tiedForFirst.length === 1) {
+    winnerSubmissionId = ranked[0].id;
+    const runnerUp = ranked[1]; // always exists — subs.length >= 2, checked above
     const winnerAi = match.verdict && match.verdict.scores[String(winnerSubmissionId)];
-    const loserAi = match.verdict && match.verdict.scores[String(loserId)];
-    if (winnerAi) awards = computeAwards(winnerAi, loserAi);
+    const runnerUpAi = match.verdict && match.verdict.scores[String(runnerUp.id)];
+    if (winnerAi) awards = computeAwards(winnerAi, runnerUpAi);
   }
   return { winnerSubmissionId, scores, awards, pending: false };
 }
 
-/** A match "reveals" (photos + AI critique visible) once both sides have
- *  submitted, or the week's deadline passes — same trigger as before, now
- *  scoped per-match instead of per-week. The FINAL combined score is a
- *  separate, later gate: see Match.finalizedAt. */
+/** A match "reveals" (photos + AI critique visible) once everyone in an
+ *  occupied slot has submitted, or the week's deadline passes. */
 function isMatchRevealed(match, week) {
-  return match.submissions.length === 2 || new Date() >= new Date(week.deadline);
+  const occupied = occupiedParticipants(match).length;
+  return (occupied > 0 && match.submissions.length === occupied) || new Date() >= new Date(week.deadline);
 }
 
 async function getSettings() {
   return prisma.settings.findUniqueOrThrow({ where: { id: 1 } });
 }
 
-/** Randomly pairs every password-set user into Matches for a week. Odd one
- *  out gets a Match with playerBId: null (a bye) — the same shape a
- *  forfeit-vacated slot ends up in, so joining either case is one code path
- *  (see /api/matches/:id/join). */
+/** Groups run through GROUP_MAX_PLAYERS active players — everyone plays one
+ *  shared round together, no bye. Above that, falls back to the original
+ *  random 1v1 pairing with a bye for the odd one out. Either way, a bye or
+ *  a forfeit-vacated slot is a MatchParticipant row with userId: null, so
+ *  /api/matches/:id/join can fill either case with one code path. */
 async function createMatchesForWeek(weekId) {
   const users = await prisma.user.findMany({ where: { passwordHash: { not: null } }, select: { id: true } });
   const ids = users.map((u) => u.id);
@@ -64,11 +75,19 @@ async function createMatchesForWeek(weekId) {
     const j = Math.floor(Math.random() * (i + 1));
     [ids[i], ids[j]] = [ids[j], ids[i]];
   }
-  const data = [];
-  for (let i = 0; i < ids.length; i += 2) {
-    data.push({ weekId, playerAId: ids[i], playerBId: ids[i + 1] ?? null });
+  if (!ids.length) return;
+
+  if (ids.length <= GROUP_MAX_PLAYERS) {
+    await prisma.match.create({ data: { weekId, participants: { create: ids.map((userId) => ({ userId })) } } });
+    return;
   }
-  if (data.length) await prisma.match.createMany({ data });
+
+  for (let i = 0; i < ids.length; i += 2) {
+    // A solo bye still gets an explicit open second slot (userId: null) —
+    // without one, there'd be nothing for /api/matches/:id/join to fill.
+    const slotIds = ids[i + 1] != null ? [ids[i], ids[i + 1]] : [ids[i], null];
+    await prisma.match.create({ data: { weekId, participants: { create: slotIds.map((userId) => ({ userId })) } } });
+  }
 }
 
 /** The single non-archived week — creates week 1 (and its matches) on
@@ -76,11 +95,11 @@ async function createMatchesForWeek(weekId) {
 async function getCurrentWeek() {
   let week = await prisma.week.findFirst({ where: { archivedAt: null }, include: WEEK_INCLUDE, orderBy: { number: "desc" } });
   if (week) {
-    // A week can exist with zero matches — e.g. right after this migration
-    // ran (the current week predates the Match concept and had no activity
-    // yet for the backfill to reconstruct), or nobody had a password set
-    // yet when the week was first created. Pair it now instead of leaving
-    // everyone permanently match-less for the rest of the week.
+    // A week can exist with zero matches — e.g. right after a migration ran
+    // (the current week predates whatever changed and had no activity yet
+    // for a backfill to reconstruct), or nobody had a password set yet when
+    // the week was first created. Pair it now instead of leaving everyone
+    // permanently match-less for the rest of the week.
     if (week.matches.length === 0) {
       await createMatchesForWeek(week.id);
       week = await prisma.week.findUniqueOrThrow({ where: { id: week.id }, include: WEEK_INCLUDE });
@@ -152,24 +171,31 @@ async function rolloverIfNeeded() {
 }
 
 /** The match a user is playing in this week, if any (every password-set
- *  user gets exactly one Match row per week — a real pairing or a bye). */
+ *  user gets exactly one Match row per week — a real pairing/group or a
+ *  bye). */
 function findMyMatch(week, userId) {
-  return week.matches.find((m) => m.playerAId === userId || m.playerBId === userId) || null;
+  return week.matches.find((m) => m.participants.some((p) => p.userId === userId)) || null;
 }
 
 /** Matches this week with an open slot (bye, or forfeit-vacated) that a
  *  user could step into. Eligible if they have no match of their own, or
- *  their own match is itself open (a bye, or the one they forfeited) — a
- *  bye player occupies a slot in their OWN placeholder match, but that
- *  doesn't count as "otherwise engaged": stepping into someone else's
- *  vacancy is exactly what a bye is for. */
+ *  their own match is itself short a slot (a bye, or the one they
+ *  forfeited) — a bye player occupies a slot in their OWN placeholder
+ *  match, but that doesn't count as "otherwise engaged": stepping into
+ *  someone else's vacancy is exactly what a bye is for. In a full group
+ *  (everyone eligible already in the one match), a forfeited slot simply
+ *  has no eligible joiner — same code path, it just naturally finds none. */
 function findJoinableMatches(week, userId) {
   const myMatch = findMyMatch(week, userId);
-  const eligible = !myMatch || myMatch.playerAId == null || myMatch.playerBId == null;
+  const myOpenSlots = myMatch ? myMatch.participants.filter((p) => p.userId == null).length : 0;
+  const eligible = !myMatch || myOpenSlots > 0;
   if (!eligible) return [];
   return week.matches.filter(
-    (m) => m.id !== myMatch?.id && m.forfeitedUserId !== userId && (m.playerAId == null) !== (m.playerBId == null)
-  ); // exactly one slot open, and not the one you just forfeited out of
+    (m) =>
+      m.id !== myMatch?.id &&
+      m.participants.some((p) => p.userId == null) &&
+      !m.participants.some((p) => p.forfeitedUserId === userId) // not the one you just forfeited out of
+  );
 }
 
 async function deriveStandings() {
@@ -214,20 +240,21 @@ async function deriveStandings() {
   });
 
   // Per-user participation streak: YOUR consecutive weeks (most recent
-  // first) with a real (non-bye) match where you submitted before deadline.
-  // A bye week is simply skipped rather than breaking the streak — it's a
-  // measure of your own reliability when you *do* have someone to shoot
-  // against, not a "both of you" shared number anymore now that pairing
-  // rotates.
+  // first) with a real (non-solo) match where you submitted before
+  // deadline. A bye week is simply skipped rather than breaking the streak
+  // — it's a measure of your own reliability when you *do* have a round to
+  // shoot for, not tied to exactly one opponent anymore now that pairing
+  // (and group size) rotates.
   const realMatchesByUser = {};
   users.forEach((u) => (realMatchesByUser[u.id] = []));
-  const allRealMatches = await prisma.match.findMany({
-    where: { playerAId: { not: null }, playerBId: { not: null } },
-    include: { submissions: true, week: true },
+  const allMatches = await prisma.match.findMany({
+    include: { participants: true, submissions: true, week: true },
     orderBy: { week: { number: "desc" } },
   });
-  allRealMatches.forEach((m) => {
-    [m.playerAId, m.playerBId].forEach((uid) => realMatchesByUser[uid]?.push(m));
+  allMatches.forEach((m) => {
+    const occupied = occupiedParticipants(m);
+    if (occupied.length < 2) return; // solo bye — doesn't count either way
+    occupied.forEach((p) => realMatchesByUser[p.userId]?.push(m));
   });
   users.forEach((u) => {
     let streak = 0;
@@ -254,6 +281,7 @@ module.exports = {
   findMyMatch,
   findJoinableMatches,
   createMatchesForWeek,
+  occupiedParticipants,
   WEEK_INCLUDE,
   MATCH_INCLUDE,
 };

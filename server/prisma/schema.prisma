@@ -24,9 +24,8 @@ model User {
   nudgesSent        Nudge[]           @relation("NudgeFrom")
   nudgesReceived    Nudge[]           @relation("NudgeTo")
   pushSubscriptions PushSubscription[]
-  matchesAsA        Match[]           @relation("MatchPlayerA")
-  matchesAsB        Match[]           @relation("MatchPlayerB")
-  forfeitedMatches  Match[]           @relation("MatchForfeitedBy")
+  matchSlots        MatchParticipant[] @relation("ParticipantUser")
+  forfeitedSlots    MatchParticipant[] @relation("ParticipantForfeitedBy")
 }
 
 model PasswordResetToken {
@@ -73,30 +72,44 @@ model Week {
   @@index([deadline])
 }
 
-// One pairing for a given week. A bye or a forfeit-vacated slot is
-// represented the same way — playerBId (or playerAId) is simply null —
-// so /api/matches/:id/join can fill either case with one code path.
+// One round for a given week — 2 participants for a duel, up to 4 for a
+// group challenge (see createMatchesForWeek in weeks.js: groups run through
+// 4 active players, random 1v1 pairing kicks in at 5+). A duel is just a
+// group of two; nothing downstream (scoring, standings) special-cases it.
 model Match {
   id              Int       @id @default(autoincrement())
   weekId          Int
   week            Week      @relation(fields: [weekId], references: [id], onDelete: Cascade)
-  playerAId       Int?
-  playerA         User?     @relation("MatchPlayerA", fields: [playerAId], references: [id], onDelete: SetNull)
-  playerBId       Int?
-  playerB         User?     @relation("MatchPlayerB", fields: [playerBId], references: [id], onDelete: SetNull)
-  forfeitedUserId Int?
-  forfeitedUser   User?     @relation("MatchForfeitedBy", fields: [forfeitedUserId], references: [id], onDelete: SetNull)
-  lockedAt        DateTime? // both submitted, or deadline passed
+  lockedAt        DateTime? // everyone submitted, or deadline passed
   finalizedAt     DateTime? // lockedAt + 24h — combined score locks in, counts toward standings
   reminderSentAt  DateTime? // 24h-before-deadline nudge, fired once per match
   createdAt       DateTime  @default(now())
 
-  submissions Submission[]
-  ratings     Rating[]
-  verdict     Verdict?
-  nudges      Nudge[]
+  participants MatchParticipant[]
+  submissions  Submission[]
+  ratings      Rating[]
+  verdict      Verdict?
+  nudges       Nudge[]
 
   @@index([weekId])
+}
+
+// One slot in a Match. A bye or a forfeit-vacated slot is represented the
+// same way — userId is simply null — so /api/matches/:id/join can fill
+// either case with one code path. forfeitedUserId is a separate audit
+// field: who vacated this slot, if anyone (kept even once someone else
+// fills it back in, though today nobody outside a full group can).
+model MatchParticipant {
+  id              Int    @id @default(autoincrement())
+  matchId         Int
+  match           Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId          Int?
+  user            User?  @relation("ParticipantUser", fields: [userId], references: [id], onDelete: SetNull)
+  forfeitedUserId Int?
+  forfeitedUser   User?  @relation("ParticipantForfeitedBy", fields: [forfeitedUserId], references: [id], onDelete: SetNull)
+
+  @@index([matchId])
+  @@index([userId])
 }
 
 model Submission {
@@ -111,37 +124,43 @@ model Submission {
   caption     String   @default("")
   submittedAt DateTime @default(now())
 
+  ratings Rating[]
+
   @@unique([matchId, userId])
 }
 
 model Rating {
-  id         Int      @id @default(autoincrement())
-  matchId    Int
-  match      Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  raterId    Int // the user who submitted this rating — it scores the OTHER player's photo
-  rater      User     @relation(fields: [raterId], references: [id], onDelete: Cascade)
-  scores     Json // { interpretation, composition, mood, originality, execution }
-  note       String   @default("")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id           Int        @id @default(autoincrement())
+  matchId      Int
+  match        Match      @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  raterId      Int // the user who submitted this rating
+  rater        User       @relation(fields: [raterId], references: [id], onDelete: Cascade)
+  submissionId Int // which submission this rating scores — needed once a match can have more than one "other" photo
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  scores       Json // { interpretation, composition, mood, originality, execution }
+  note         String     @default("")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
-  @@unique([matchId, raterId])
+  @@unique([matchId, raterId, submissionId])
 }
 
 model Verdict {
-  id                 Int      @id @default(autoincrement())
-  matchId            Int      @unique
-  match              Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  source             String // "ai" | "guest"
-  judgeName          String   @default("")
-  // critique/scores are keyed by submission id (as a JSON string key) — the
-  // A/B anonymization is only a presentation trick used while calling the
-  // judge; the server resolves it back to real submissions before storing.
-  critique           Json // { [submissionId]: text, comparison, why }
-  scores             Json // { [submissionId]: { interpretation, composition, mood, originality, execution } }
-  winnerSubmissionId Int? // null = tie
-  awards             String[] @default([])
-  createdAt          DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  matchId   Int      @unique
+  match     Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  source    String // "ai" | "guest"
+  judgeName String   @default("")
+  // critique/scores are keyed by submission id (as a JSON string key), for
+  // however many submissions the match has (2 for a duel, up to 4 for a
+  // group) — the A/B/C/D anonymization is only a presentation trick used
+  // while calling the judge; the server resolves it back to real
+  // submissions before storing. No stored winner/awards — those are
+  // derived downstream from combined AI+peer scores (computeMatchResult in
+  // weeks.js), not from the AI's raw per-photo take.
+  critique  Json // { [submissionId]: text, comparison }
+  scores    Json // { [submissionId]: { interpretation, composition, mood, originality, execution } }
+  createdAt DateTime @default(now())
 }
 
 model Nudge {

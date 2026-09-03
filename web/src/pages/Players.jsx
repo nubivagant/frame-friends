@@ -17,7 +17,10 @@ export default function Players({ me }) {
   const player = state.players.find((p) => p.id === pid);
   const accent = player.slug === "scott" ? "var(--t-emotion)" : "var(--t-street)";
 
-  const mine = (matches || []).filter((m) => m.playerAId && m.playerBId && (m.playerAId === pid || m.playerBId === pid));
+  const mine = (matches || []).filter((m) => {
+    const occupied = m.participants.filter((p) => p.userId != null);
+    return occupied.length >= 2 && occupied.some((p) => p.userId === pid);
+  });
 
   return (
     <div className="page">
@@ -76,8 +79,7 @@ export default function Players({ me }) {
         <div style={{ marginTop: 16 }}>
           {mine.slice(0, 10).map((m) => {
             const mySub = m.submissions.find((s) => s.userId === pid);
-            const opponentId = m.playerAId === pid ? m.playerBId : m.playerAId;
-            const oppPlayer = state.players.find((p) => p.id === opponentId);
+            const opponents = m.participants.filter((p) => p.userId != null && p.userId !== pid).map((p) => state.players.find((pl) => pl.id === p.userId));
             const outcome = m.result.pending
               ? "Pending"
               : m.result.winnerSubmissionId == null
@@ -88,8 +90,8 @@ export default function Players({ me }) {
             return (
               <div key={m.id} className="row between" style={{ padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
                 <div className="row" style={{ gap: 10 }}>
-                  {oppPlayer && <Avatar player={oppPlayer} size="xs" />}
-                  <span style={{ fontSize: 13 }}>vs {oppPlayer?.name || "Unknown"}</span>
+                  {opponents[0] && <Avatar player={opponents[0]} size="xs" />}
+                  <span style={{ fontSize: 13 }}>vs {opponents.map((p) => p?.name || "Unknown").join(", ")}</span>
                   <span className="muted" style={{ fontSize: 12 }}>
                     W{String(m.week.number).padStart(2, "0")}
                   </span>

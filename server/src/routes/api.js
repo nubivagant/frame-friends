@@ -13,6 +13,7 @@ const {
   isMatchRevealed,
   findMyMatch,
   findJoinableMatches,
+  occupiedParticipants,
   MATCH_INCLUDE,
 } = require("../weeks");
 const { saveResizedPhoto, photoAbsolutePath } = require("../photos");
@@ -27,12 +28,6 @@ const upload = multer({ limits: { fileSize: 24 * 1024 * 1024 } }); // 24MB, matc
 const router = express.Router();
 router.use(requireAuth);
 
-function opponentIdFor(match, userId) {
-  if (match.playerAId === userId) return match.playerBId;
-  if (match.playerBId === userId) return match.playerAId;
-  return null;
-}
-
 function shapeSubmission(sub, { includePrivate }) {
   const base = { id: sub.id, userId: sub.userId, submitted: true, submittedAt: sub.submittedAt };
   if (!includePrivate) return base;
@@ -41,34 +36,40 @@ function shapeSubmission(sub, { includePrivate }) {
 
 async function buildMatchPayload(match, week, requestingUserId) {
   const revealed = isMatchRevealed(match, week);
-  const opponentId = opponentIdFor(match, requestingUserId);
+  const occupied = occupiedParticipants(match);
+  const otherIds = occupied.map((p) => p.userId).filter((id) => id !== requestingUserId);
   const mySub = match.submissions.find((s) => s.userId === requestingUserId) || null;
-  const opponentSub = opponentId ? match.submissions.find((s) => s.userId === opponentId) || null : null;
 
-  const submissions = match.submissions
-    .filter((s) => s.userId === requestingUserId || s.userId === opponentId)
-    .map((s) => shapeSubmission(s, { includePrivate: revealed || s.userId === requestingUserId }));
+  // Pre-reveal, only ever show MY OWN submission row — showing anyone
+  // else's (even just their userId, with no photo) would leak who's in
+  // this match before the reveal is supposed to happen.
+  const submissions = revealed
+    ? match.submissions.map((s) => shapeSubmission(s, { includePrivate: true }))
+    : mySub
+    ? [shapeSubmission(mySub, { includePrivate: true })]
+    : [];
 
-  let opponent = null;
-  if (revealed && opponentId) {
-    const u = await prisma.user.findUnique({ where: { id: opponentId } });
-    if (u) opponent = publicUser(u);
+  let participants = [];
+  if (revealed && otherIds.length) {
+    const users = await prisma.user.findMany({ where: { id: { in: otherIds } } });
+    participants = users.map(publicUser);
   }
 
   const result = computeMatchResult(match);
   return {
     id: match.id,
     weekId: match.weekId,
-    isBye: !opponentId,
-    canForfeit: !!opponentId && !mySub && new Date() < new Date(week.deadline),
+    isBye: occupied.length < 2,
+    canForfeit: occupied.length >= 2 && !mySub && new Date() < new Date(week.deadline),
     revealed,
     mySubmitted: !!mySub,
-    opponentSubmitted: !!opponentSub,
+    submittedCount: match.submissions.length,
+    totalCount: occupied.length,
     lockedAt: match.lockedAt,
     finalizedAt: match.finalizedAt,
     submissions,
-    opponent,
-    ratings: revealed ? match.ratings.map((r) => ({ raterId: r.raterId, scores: r.scores, note: r.note })) : [],
+    participants,
+    ratings: revealed ? match.ratings.map((r) => ({ raterId: r.raterId, submissionId: r.submissionId, scores: r.scores, note: r.note })) : [],
     verdict: match.verdict && revealed ? { judgeName: match.verdict.judgeName, critique: match.verdict.critique, source: match.verdict.source } : null,
     result: match.finalizedAt ? result : { pending: true },
   };
@@ -117,18 +118,16 @@ router.get("/state", async (req, res) => {
 });
 
 // Archive is a shared, public record — every match returned here is already
-// locked (both submitted, or deadline passed), so unlike buildMatchPayload
-// (scoped to "my current match", with pre-reveal privacy rules) this shows
-// both sides unconditionally, for whichever two players were in it.
+// locked (everyone submitted, or deadline passed), so unlike
+// buildMatchPayload (scoped to "my current match", with pre-reveal privacy
+// rules) this shows every participant unconditionally.
 function shapeArchivedMatch(match) {
   const result = computeMatchResult(match);
   return {
     id: match.id,
     weekId: match.weekId,
     week: { number: match.week.number, season: match.week.season, types: match.week.types, brief: match.week.brief, deadline: match.week.deadline },
-    playerAId: match.playerAId,
-    playerBId: match.playerBId,
-    forfeitedUserId: match.forfeitedUserId,
+    participants: match.participants.map((p) => ({ userId: p.userId, forfeitedUserId: p.forfeitedUserId })),
     finalizedAt: match.finalizedAt,
     submissions: match.submissions.map((s) => shapeSubmission(s, { includePrivate: true })),
     result: match.finalizedAt ? result : { pending: true },
@@ -147,13 +146,14 @@ router.get("/archive", async (req, res) => {
 router.get("/photos/:submissionId", async (req, res) => {
   const submission = await prisma.submission.findUnique({
     where: { id: Number(req.params.submissionId) },
-    include: { match: { include: { week: true } } },
+    include: { match: { include: { week: true, participants: true } } },
   });
   if (!submission) return res.status(404).end();
 
   const owns = submission.userId === req.session.userId;
   const submissionsCount = await prisma.submission.count({ where: { matchId: submission.matchId } });
-  const revealed = submissionsCount === 2 || new Date() >= new Date(submission.match.week.deadline);
+  const occupiedCount = submission.match.participants.filter((p) => p.userId != null).length;
+  const revealed = (occupiedCount >= 2 && submissionsCount === occupiedCount) || new Date() >= new Date(submission.match.week.deadline);
 
   if (!owns && !revealed) return res.status(403).json({ error: "not_revealed" });
 
@@ -170,8 +170,8 @@ router.post("/submissions", upload.single("photo"), async (req, res) => {
 
   const match = findMyMatch(week, req.session.userId);
   if (!match) return res.status(400).json({ error: "no_match" });
-  const opponentId = opponentIdFor(match, req.session.userId);
-  if (!opponentId) return res.status(400).json({ error: "no_opponent" }); // bye / open slot — nothing to submit into yet
+  const occupied = occupiedParticipants(match);
+  if (occupied.length < 2) return res.status(400).json({ error: "no_opponent" }); // bye / open slot — nobody to submit into yet
 
   const relativePath = await saveResizedPhoto(req.file.buffer);
   const data = {
@@ -195,14 +195,13 @@ router.post("/submissions", upload.single("photo"), async (req, res) => {
   }
 
   const count = await prisma.submission.count({ where: { matchId: match.id } });
-  if (count === 2) {
+  if (count === occupied.length) {
     await prisma.match.update({ where: { id: match.id }, data: { lockedAt: new Date() } });
     runAiJudge(match.id).catch((err) => console.error("[judge] failed", err));
-    sendPushToUsers([match.playerAId, match.playerBId], {
-      title: "Reveal is ready",
-      body: `"${week.brief}" — both of you are in.`,
-      url: "/reveal",
-    }).catch((err) => console.error("[push] reveal-ready failed", err));
+    sendPushToUsers(
+      occupied.map((p) => p.userId),
+      { title: "Reveal is ready", body: `"${week.brief}" — everyone's in.`, url: "/reveal" }
+    ).catch((err) => console.error("[push] reveal-ready failed", err));
   }
 
   res.json({ ok: true, submissionId: submission.id });
@@ -212,21 +211,22 @@ router.post("/nudge", async (req, res) => {
   const { week } = await rolloverIfNeeded();
   const match = findMyMatch(week, req.session.userId);
   if (!match) return res.status(400).json({ error: "no_match" });
-  const targetId = opponentIdFor(match, req.session.userId);
-  if (!targetId) return res.status(400).json({ error: "no_opponent" });
 
-  const alreadySubmitted = match.submissions.some((s) => s.userId === targetId);
-  if (alreadySubmitted) return res.status(400).json({ error: "already_submitted" });
+  const submittedIds = new Set(match.submissions.map((s) => s.userId));
+  const targets = occupiedParticipants(match)
+    .map((p) => p.userId)
+    .filter((id) => id !== req.session.userId && !submittedIds.has(id));
+  if (!targets.length) return res.status(400).json({ error: "no_targets" });
 
   const recent = await prisma.nudge.findFirst({
-    where: { matchId: match.id, toUserId: targetId, sentAt: { gte: new Date(Date.now() - NUDGE_COOLDOWN_MS) } },
+    where: { matchId: match.id, fromUserId: req.session.userId, sentAt: { gte: new Date(Date.now() - NUDGE_COOLDOWN_MS) } },
     orderBy: { sentAt: "desc" },
   });
   if (recent) return res.status(429).json({ error: "rate_limited", retryAfter: recent.sentAt });
 
   const me = await prisma.user.findUnique({ where: { id: req.session.userId } });
-  await prisma.nudge.create({ data: { matchId: match.id, fromUserId: req.session.userId, toUserId: targetId } });
-  await sendPush(targetId, { title: `${me.name} is waiting on you`, body: `"${week.brief}" — don't leave them hanging.`, url: "/upload" });
+  await prisma.nudge.createMany({ data: targets.map((toUserId) => ({ matchId: match.id, fromUserId: req.session.userId, toUserId })) });
+  await sendPushToUsers(targets, { title: `${me.name} is waiting on you`, body: `"${week.brief}" — don't leave them hanging.`, url: "/upload" });
 
   res.json({ ok: true });
 });
@@ -236,18 +236,18 @@ router.post("/matches/:id/forfeit", async (req, res) => {
   const { week } = await rolloverIfNeeded();
   const match = week.matches.find((m) => m.id === matchId);
   if (!match) return res.status(404).json({ error: "not_found" });
-  if (match.playerAId !== req.session.userId && match.playerBId !== req.session.userId) {
-    return res.status(403).json({ error: "not_in_match" });
-  }
+  const mySlot = match.participants.find((p) => p.userId === req.session.userId);
+  if (!mySlot) return res.status(403).json({ error: "not_in_match" });
   if (new Date() >= new Date(week.deadline)) return res.status(400).json({ error: "deadline_passed" });
   if (match.submissions.some((s) => s.userId === req.session.userId)) return res.status(400).json({ error: "already_submitted" });
 
-  const data = match.playerAId === req.session.userId ? { playerAId: null, forfeitedUserId: req.session.userId } : { playerBId: null, forfeitedUserId: req.session.userId };
-  await prisma.match.update({ where: { id: matchId }, data });
+  await prisma.matchParticipant.update({ where: { id: mySlot.id }, data: { userId: null, forfeitedUserId: req.session.userId } });
 
-  const opponentId = opponentIdFor(match, req.session.userId);
-  if (opponentId) {
-    sendPush(opponentId, { title: "Your opponent forfeited", body: "Someone else may step in before the deadline.", url: "/" }).catch((err) =>
+  const others = occupiedParticipants(match)
+    .map((p) => p.userId)
+    .filter((id) => id !== req.session.userId);
+  if (others.length) {
+    sendPushToUsers(others, { title: "Someone forfeited this round", body: "Someone else may step in before the deadline.", url: "/" }).catch((err) =>
       console.error("[push] forfeit failed", err)
     );
   }
@@ -260,17 +260,17 @@ router.post("/matches/:id/join", async (req, res) => {
   const match = week.matches.find((m) => m.id === matchId);
   if (!match) return res.status(404).json({ error: "not_found" });
   if (new Date() >= new Date(week.deadline)) return res.status(400).json({ error: "deadline_passed" });
-  if (match.playerAId && match.playerBId) return res.status(400).json({ error: "match_full" });
-  if (match.forfeitedUserId === req.session.userId) return res.status(400).json({ error: "cant_rejoin_own_forfeit" });
+
+  const openSlot = match.participants.find((p) => p.userId == null);
+  if (!openSlot) return res.status(400).json({ error: "match_full" });
 
   const joinable = findJoinableMatches(week, req.session.userId);
   if (!joinable.some((m) => m.id === matchId)) return res.status(400).json({ error: "not_eligible" });
 
-  const data = match.playerAId == null ? { playerAId: req.session.userId } : { playerBId: req.session.userId };
-  await prisma.match.update({ where: { id: matchId }, data });
+  await prisma.matchParticipant.update({ where: { id: openSlot.id }, data: { userId: req.session.userId } });
 
   // clean up my own now-redundant match(es) for this week, if nobody ever submitted to them
-  const mine = week.matches.filter((m) => m.id !== matchId && (m.playerAId === req.session.userId || m.playerBId === req.session.userId));
+  const mine = week.matches.filter((m) => m.id !== matchId && m.participants.some((p) => p.userId === req.session.userId));
   for (const m of mine) {
     const subCount = await prisma.submission.count({ where: { matchId: m.id } });
     if (subCount === 0) await prisma.match.delete({ where: { id: m.id } }).catch(() => {});
@@ -305,6 +305,12 @@ router.post("/ratings", async (req, res) => {
   const match = findMyMatch(week, req.session.userId);
   if (!match) return res.status(400).json({ error: "no_match" });
   if (match.finalizedAt) return res.status(400).json({ error: "already_finalized" });
+  if (match.submissions.length < 2) return res.status(400).json({ error: "not_revealed" });
+
+  const submissionId = Number(req.body && req.body.submissionId);
+  const targetSub = match.submissions.find((s) => s.id === submissionId && s.userId !== req.session.userId);
+  if (!targetSub) return res.status(400).json({ error: "invalid_submission" });
+
   const scores = req.body && req.body.scores;
   if (!scores || typeof scores !== "object") return res.status(400).json({ error: "invalid_scores" });
   const cleaned = {};
@@ -312,12 +318,11 @@ router.post("/ratings", async (req, res) => {
     const v = Number(scores[c.key]);
     cleaned[c.key] = Number.isFinite(v) ? Math.max(0, Math.min(10, v)) : 0;
   });
-  if (match.submissions.length < 2) return res.status(400).json({ error: "not_revealed" });
 
   await prisma.rating.upsert({
-    where: { matchId_raterId: { matchId: match.id, raterId: req.session.userId } },
+    where: { matchId_raterId_submissionId: { matchId: match.id, raterId: req.session.userId, submissionId } },
     update: { scores: cleaned, note: (req.body.note || "").slice(0, 500) },
-    create: { matchId: match.id, raterId: req.session.userId, scores: cleaned, note: (req.body.note || "").slice(0, 500) },
+    create: { matchId: match.id, raterId: req.session.userId, submissionId, scores: cleaned, note: (req.body.note || "").slice(0, 500) },
   });
   res.json({ ok: true });
 });
