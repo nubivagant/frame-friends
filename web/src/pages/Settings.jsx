@@ -66,6 +66,7 @@ export default function Settings({ me, onNameChanged }) {
           deadlineTime: settings.deadlineTime,
           briefDropDay: settings.briefDropDay,
           rerollTokensPerSeason: settings.rerollTokensPerSeason,
+          cadenceWeeks: settings.cadenceWeeks,
         }),
         name !== me.name ? api.updateMe({ name }) : Promise.resolve(),
       ]);
@@ -110,6 +111,28 @@ export default function Settings({ me, onNameChanged }) {
                   <option key={d}>{d}</option>
                 ))}
               </select>
+            </div>
+            <div className="col" style={{ gap: 6, marginTop: 14 }}>
+              <span className="eyebrow" id="settings-round-length-label">Round length</span>
+              <div className="row" role="group" aria-labelledby="settings-round-length-label" style={{ gap: 6 }}>
+                {[
+                  { n: 1, label: "Weekly" },
+                  { n: 2, label: "Fortnightly" },
+                ].map(({ n, label }) => (
+                  <button
+                    key={n}
+                    aria-pressed={settings.cadenceWeeks === n}
+                    className="btn ghost"
+                    style={{ flex: 1, justifyContent: "center", borderColor: settings.cadenceWeeks === n ? "var(--ink)" : "var(--line)" }}
+                    onClick={() => setCfg({ ...settings, cadenceWeeks: n })}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="muted" style={{ fontSize: 11, margin: 0 }}>
+                A new round opens the instant the current one locks — this just controls how far out the next lock lands.
+              </p>
             </div>
             <div className="col" style={{ gap: 6, marginTop: 14 }}>
               <span className="eyebrow" id="settings-lock-label">Submissions lock</span>
