@@ -12,7 +12,7 @@ const JUDGE_MODEL = "claude-sonnet-5";
 function buildPrompt(week) {
   const rubric = CRITERIA.map((c) => `- ${c.key} (${c.label}): 0-10`).join("\n");
   return (
-    `You are judging a private two-person photography game called Frame Friends.\n` +
+    `You are judging one matchup in a private photography game called Frame Friends.\n` +
     `This week's brief: "${week.brief}" (${week.inspiration})\n\n` +
     `Two photos are attached: "Photo A" and "Photo B", submitted anonymously — you don't know who took which. Judge them blind.\n` +
     `Score each photo 0-10 in exactly these categories:\n${rubric}\n\n` +
@@ -33,16 +33,17 @@ async function imageBlock(submission) {
   };
 }
 
-/** Runs the AI judge for a week that has exactly two submissions and no
+/** Runs the AI judge for a match that has exactly two submissions and no
  *  verdict yet. Safe to call speculatively — it's a no-op if a verdict
  *  already exists or the key isn't configured. */
-async function runAiJudge(weekId) {
+async function runAiJudge(matchId) {
   if (!config.anthropicApiKey) return null;
 
-  const week = await prisma.week.findUnique({ where: { id: weekId }, include: { submissions: true, verdict: true } });
-  if (!week || week.verdict || week.submissions.length !== 2) return null;
+  const match = await prisma.match.findUnique({ where: { id: matchId }, include: { submissions: true, verdict: true, week: true } });
+  if (!match || match.verdict || match.submissions.length !== 2) return null;
+  const week = match.week;
 
-  const [subA, subB] = week.submissions;
+  const [subA, subB] = match.submissions;
   const client = new Anthropic({ apiKey: config.anthropicApiKey });
 
   const response = await client.messages.create({
@@ -68,7 +69,7 @@ async function runAiJudge(weekId) {
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     parsed = JSON.parse(jsonMatch ? jsonMatch[0] : text);
   } catch (err) {
-    console.error(`[judge] failed to parse response for week ${week.number}:`, text);
+    console.error(`[judge] failed to parse response for match ${match.id} (week ${week.number}):`, text);
     return null;
   }
 
@@ -81,7 +82,7 @@ async function runAiJudge(weekId) {
 
   const verdict = await prisma.verdict.create({
     data: {
-      weekId: week.id,
+      matchId: match.id,
       source: "ai",
       judgeName: "Claude",
       critique: { [subA.id]: parsed.critiqueA, [subB.id]: parsed.critiqueB, comparison: parsed.comparison, why: parsed.why },

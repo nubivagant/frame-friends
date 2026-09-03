@@ -1,7 +1,7 @@
 {
   "name": "Frame Friends",
   "short_name": "Frame Friends",
-  "description": "A weekly photography ritual for two",
+  "description": "A weekly photography ritual",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0E0F0D",

@@ -34,7 +34,7 @@ function useRouteAnnouncement() {
 
   useEffect(() => {
     const label = TITLES[location.pathname] || "";
-    document.title = label ? `${label} — Frame Friends` : "Frame Friends — A weekly photography ritual for two";
+    document.title = label ? `${label} — Frame Friends` : "Frame Friends — A weekly photography ritual";
 
     if (isFirstRender.current) {
       isFirstRender.current = false;

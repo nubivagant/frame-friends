@@ -36,6 +36,8 @@ export const api = {
   updateMe: (data) => request("/players/me", { method: "PATCH", body: JSON.stringify(data) }),
 
   nudge: () => request("/nudge", { method: "POST" }),
+  forfeit: (matchId) => request(`/matches/${matchId}/forfeit`, { method: "POST" }),
+  joinMatch: (matchId) => request(`/matches/${matchId}/join`, { method: "POST" }),
   getVapidKey: () => request("/push/vapid-public-key"),
   subscribePush: (subscription) => request("/push/subscribe", { method: "POST", body: JSON.stringify(subscription) }),
   unsubscribePush: (endpoint) => request("/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint }) }),

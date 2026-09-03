@@ -20,9 +20,23 @@ export default function Upload({ me }) {
 
   if (!state) return null;
   const cur = state.currentWeek;
-  const them = state.players.find((p) => p.id !== me.id);
-  const mySub = cur.submissions.find((s) => s.userId === me.id);
-  const theirSub = cur.submissions.find((s) => s.userId === them.id);
+  const match = state.myMatch;
+
+  if (!match || match.isBye) {
+    return (
+      <div className="page" style={{ maxWidth: 720, textAlign: "center", paddingTop: 100 }}>
+        <p className="eyebrow">No match this week</p>
+        <h1 className="headline-l serif italic" style={{ marginTop: 14 }}>
+          Nothing to submit — you're on the bench.
+        </h1>
+        <button className="btn primary" style={{ marginTop: 24 }} onClick={() => navigate("/")}>
+          Back to dashboard
+        </button>
+      </div>
+    );
+  }
+
+  const mySub = match.submissions.find((s) => s.userId === me.id);
 
   if (mySub && !forceEdit) {
     return (
@@ -35,14 +49,16 @@ export default function Upload({ me }) {
           <Seal n={cur.number} season={cur.season} color="var(--t-emotion)" />
         </div>
         <p className="muted rise d3" style={{ maxWidth: "44ch", margin: "28px auto 0", lineHeight: 1.7 }}>
-          {theirSub ? "Both of you are in — head to Reveal." : `${them.name} hasn't submitted yet. Reveal opens the moment they do, or at ${fmtDeadlineLabel(cur.deadline)}.`}
+          {match.opponentSubmitted
+            ? "Both of you are in — head to Reveal."
+            : `Your opponent hasn't submitted yet. Reveal opens the moment they do, or at ${fmtDeadlineLabel(cur.deadline)}.`}
         </p>
         <div className="row rise d4" style={{ justifyContent: "center", gap: 10, marginTop: 36 }}>
           <button className="btn ghost" onClick={() => setForceEdit(true)}>
             Replace before deadline
           </button>
-          <button className="btn primary" onClick={() => navigate(theirSub ? "/reveal" : "/")}>
-            {theirSub ? "Open reveal" : "Back to dashboard"} <span className="arrow">→</span>
+          <button className="btn primary" onClick={() => navigate(match.opponentSubmitted ? "/reveal" : "/")}>
+            {match.opponentSubmitted ? "Open reveal" : "Back to dashboard"} <span className="arrow">→</span>
           </button>
         </div>
       </div>
