@@ -81,14 +81,14 @@ function TopBar({ me, onLoggedOut }) {
             </span>
             <span className="dot-sep" aria-hidden="true">·</span>
             {state.players.map((p, i) => {
-              const sub = cur.submissions.find((s) => s.userId === p.id);
+              const sub = cur.submittedUserIds.includes(p.id);
               return (
                 <React.Fragment key={p.id}>
                   <span style={{ color: sub ? "var(--t-emotion)" : "var(--muted)" }}>
                     <span aria-hidden="true">{sub ? "● " : "○ "}</span>
                     {p.name.toUpperCase()} · {sub ? "sealed" : "pending"}
                   </span>
-                  {i === 0 && <span className="dot-sep" aria-hidden="true">·</span>}
+                  {i < state.players.length - 1 && <span className="dot-sep" aria-hidden="true">·</span>}
                 </React.Fragment>
               );
             })}
@@ -159,8 +159,8 @@ function Footer() {
         color: "var(--muted)",
       }}
     >
-      <span>Frame Friends · Private edition for two</span>
-      <span>"Two friends learning how they see"</span>
+      <span>Frame Friends · Private edition</span>
+      <span>"Friends learning how they see"</span>
     </footer>
   );
 }

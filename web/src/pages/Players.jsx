@@ -1,14 +1,23 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Avatar, SectionLabel } from "../components/Shared";
 import { useGame } from "../GameContext";
+import { api } from "../api";
+import { fmtDateLabel } from "../game";
 
 export default function Players({ me }) {
   const { state } = useGame();
   const [pid, setPid] = useState(me.id);
+  const [matches, setMatches] = useState(null);
+
+  useEffect(() => {
+    api.archive().then((d) => setMatches(d.matches));
+  }, []);
+
   if (!state) return null;
   const player = state.players.find((p) => p.id === pid);
-  const other = state.players.find((p) => p.id !== pid);
   const accent = player.slug === "scott" ? "var(--t-emotion)" : "var(--t-street)";
+
+  const mine = (matches || []).filter((m) => m.playerAId && m.playerBId && (m.playerAId === pid || m.playerBId === pid));
 
   return (
     <div className="page">
@@ -53,31 +62,44 @@ export default function Players({ me }) {
       </div>
 
       <div className="card" style={{ marginTop: 48, padding: 28 }}>
-        <SectionLabel>Head-to-head · {player.name} vs {other.name}</SectionLabel>
-        <div className="row between" style={{ marginTop: 22, gap: 24, flexWrap: "wrap" }}>
-          <div className="row" style={{ gap: 14 }}>
-            <Avatar player={player} size="lg" />
-            <div>
-              <p className="eyebrow">{player.name}</p>
-              <p className="serif" style={{ fontSize: 36 }}>
-                {player.standings.wins}
-                <span className="muted serif" style={{ fontSize: 24 }}> wins</span>
-              </p>
-            </div>
-          </div>
-          <div className="serif italic" style={{ fontSize: 28 }} aria-hidden="true">
-            vs
-          </div>
-          <div className="row" style={{ gap: 14 }}>
-            <div style={{ textAlign: "right" }}>
-              <p className="eyebrow">{other.name}</p>
-              <p className="serif" style={{ fontSize: 36 }}>
-                {other.standings.wins}
-                <span className="muted serif" style={{ fontSize: 24 }}> wins</span>
-              </p>
-            </div>
-            <Avatar player={other} size="lg" />
-          </div>
+        <SectionLabel>Recent matches</SectionLabel>
+        {matches == null && (
+          <p className="muted" style={{ fontSize: 13, marginTop: 16 }}>
+            Loading…
+          </p>
+        )}
+        {matches != null && !mine.length && (
+          <p className="muted" style={{ fontSize: 13, marginTop: 16 }}>
+            No revealed matches yet.
+          </p>
+        )}
+        <div style={{ marginTop: 16 }}>
+          {mine.slice(0, 10).map((m) => {
+            const mySub = m.submissions.find((s) => s.userId === pid);
+            const opponentId = m.playerAId === pid ? m.playerBId : m.playerAId;
+            const oppPlayer = state.players.find((p) => p.id === opponentId);
+            const outcome = m.result.pending
+              ? "Pending"
+              : m.result.winnerSubmissionId == null
+              ? "Tie"
+              : mySub && m.result.winnerSubmissionId === mySub.id
+              ? "Won"
+              : "Lost";
+            return (
+              <div key={m.id} className="row between" style={{ padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+                <div className="row" style={{ gap: 10 }}>
+                  {oppPlayer && <Avatar player={oppPlayer} size="xs" />}
+                  <span style={{ fontSize: 13 }}>vs {oppPlayer?.name || "Unknown"}</span>
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    W{String(m.week.number).padStart(2, "0")}
+                  </span>
+                </div>
+                <span className="mono" style={{ fontSize: 12, color: outcome === "Won" ? "var(--t-light)" : outcome === "Lost" ? "var(--t-street)" : "var(--muted)" }}>
+                  {outcome}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

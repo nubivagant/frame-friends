@@ -1,12 +1,20 @@
 "use strict";
 const fs = require("fs");
-const path = require("path");
 const express = require("express");
 const multer = require("multer");
 const { prisma } = require("../db");
 const { requireAuth, publicUser } = require("../auth");
 const { CRITERIA, pickBriefFor } = require("../game");
-const { getSettings, getCurrentWeek, rolloverIfNeeded, deriveStandings, computeWeekResult, isRevealed, WEEK_INCLUDE } = require("../weeks");
+const {
+  getSettings,
+  rolloverIfNeeded,
+  deriveStandings,
+  computeMatchResult,
+  isMatchRevealed,
+  findMyMatch,
+  findJoinableMatches,
+  MATCH_INCLUDE,
+} = require("../weeks");
 const { saveResizedPhoto, photoAbsolutePath } = require("../photos");
 const { runAiJudge } = require("../judge");
 const { sendPush, sendPushToUsers } = require("../push");
@@ -19,9 +27,10 @@ const upload = multer({ limits: { fileSize: 24 * 1024 * 1024 } }); // 24MB, matc
 const router = express.Router();
 router.use(requireAuth);
 
-function otherUserId(users, userId) {
-  const other = users.find((u) => u.id !== userId);
-  return other ? other.id : null;
+function opponentIdFor(match, userId) {
+  if (match.playerAId === userId) return match.playerBId;
+  if (match.playerBId === userId) return match.playerAId;
+  return null;
 }
 
 function shapeSubmission(sub, { includePrivate }) {
@@ -30,29 +39,38 @@ function shapeSubmission(sub, { includePrivate }) {
   return { ...base, title: sub.title, note: sub.note, caption: sub.caption, photoUrl: `/api/photos/${sub.id}` };
 }
 
-async function buildWeekPayload(week, requestingUserId) {
-  const revealed = isRevealed(week);
-  const mySubmission = week.submissions.find((s) => s.userId === requestingUserId) || null;
-  const submissions = week.submissions.map((s) => shapeSubmission(s, { includePrivate: revealed || s.userId === requestingUserId }));
-  const settings = await getSettings();
-  const result = computeWeekResult(week);
+async function buildMatchPayload(match, week, requestingUserId) {
+  const revealed = isMatchRevealed(match, week);
+  const opponentId = opponentIdFor(match, requestingUserId);
+  const mySub = match.submissions.find((s) => s.userId === requestingUserId) || null;
+  const opponentSub = opponentId ? match.submissions.find((s) => s.userId === opponentId) || null : null;
+
+  const submissions = match.submissions
+    .filter((s) => s.userId === requestingUserId || s.userId === opponentId)
+    .map((s) => shapeSubmission(s, { includePrivate: revealed || s.userId === requestingUserId }));
+
+  let opponent = null;
+  if (revealed && opponentId) {
+    const u = await prisma.user.findUnique({ where: { id: opponentId } });
+    if (u) opponent = publicUser(u);
+  }
+
+  const result = computeMatchResult(match);
   return {
-    id: week.id,
-    number: week.number,
-    season: week.season,
-    types: week.types,
-    brief: week.brief,
-    inspiration: week.inspiration,
-    opened: week.opened,
-    deadline: week.deadline,
-    rerollsUsedThisSeason: week.rerollsUsedThisSeason,
-    rerollTokensPerSeason: settings.rerollTokensPerSeason,
+    id: match.id,
+    weekId: match.weekId,
+    isBye: !opponentId,
+    canForfeit: !!opponentId && !mySub && new Date() < new Date(week.deadline),
     revealed,
+    mySubmitted: !!mySub,
+    opponentSubmitted: !!opponentSub,
+    lockedAt: match.lockedAt,
+    finalizedAt: match.finalizedAt,
     submissions,
-    mySubmitted: !!mySubmission,
-    ratings: revealed ? week.ratings.map((r) => ({ raterId: r.raterId, scores: r.scores, note: r.note })) : [],
-    verdict: week.verdict && revealed ? { judgeName: week.verdict.judgeName, critique: week.verdict.critique, source: week.verdict.source } : null,
-    result: revealed ? result : { pending: true },
+    opponent,
+    ratings: revealed ? match.ratings.map((r) => ({ raterId: r.raterId, scores: r.scores, note: r.note })) : [],
+    verdict: match.verdict && revealed ? { judgeName: match.verdict.judgeName, critique: match.verdict.critique, source: match.verdict.source } : null,
+    result: match.finalizedAt ? result : { pending: true },
   };
 }
 
@@ -63,37 +81,79 @@ router.get("/state", async (req, res) => {
     getSettings(),
     deriveStandings(),
   ]);
-  const weekPayload = await buildWeekPayload(week, req.session.userId);
+
+  const myMatch = findMyMatch(week, req.session.userId);
+  const myMatchPayload = myMatch ? await buildMatchPayload(myMatch, week, req.session.userId) : null;
+  const joinableMatches = findJoinableMatches(week, req.session.userId).map((m) => ({ id: m.id, weekId: m.weekId }));
+
+  // Who's submitted anything this week, globally — safe to show without
+  // breaking blind pairing, since it says nothing about who's matched with
+  // whom, just each person's own status.
+  const submittedUserIds = new Set();
+  week.matches.forEach((m) => m.submissions.forEach((s) => submittedUserIds.add(s.userId)));
 
   res.json({
     me: publicUser(await prisma.user.findUniqueOrThrow({ where: { id: req.session.userId } })),
     players: users.map((u) => ({ ...publicUser(u), standings: standings.byUser[u.id] })),
     settings,
-    currentWeek: weekPayload,
-    standings: { ties: standings.ties, weeks: standings.weeks, participationStreak: standings.participationStreak },
+    currentWeek: {
+      id: week.id,
+      number: week.number,
+      season: week.season,
+      types: week.types,
+      brief: week.brief,
+      inspiration: week.inspiration,
+      opened: week.opened,
+      deadline: week.deadline,
+      rerollsUsedThisSeason: week.rerollsUsedThisSeason,
+      rerollTokensPerSeason: settings.rerollTokensPerSeason,
+      anySubmitted: submittedUserIds.size > 0,
+      submittedUserIds: Array.from(submittedUserIds),
+    },
+    myMatch: myMatchPayload,
+    joinableMatches,
+    standings: { ties: standings.ties, weeks: standings.weeks },
   });
 });
 
+// Archive is a shared, public record — every match returned here is already
+// locked (both submitted, or deadline passed), so unlike buildMatchPayload
+// (scoped to "my current match", with pre-reveal privacy rules) this shows
+// both sides unconditionally, for whichever two players were in it.
+function shapeArchivedMatch(match) {
+  const result = computeMatchResult(match);
+  return {
+    id: match.id,
+    weekId: match.weekId,
+    week: { number: match.week.number, season: match.week.season, types: match.week.types, brief: match.week.brief, deadline: match.week.deadline },
+    playerAId: match.playerAId,
+    playerBId: match.playerBId,
+    forfeitedUserId: match.forfeitedUserId,
+    finalizedAt: match.finalizedAt,
+    submissions: match.submissions.map((s) => shapeSubmission(s, { includePrivate: true })),
+    result: match.finalizedAt ? result : { pending: true },
+  };
+}
+
 router.get("/archive", async (req, res) => {
-  const weeks = await prisma.week.findMany({
-    where: { archivedAt: { not: null } },
-    include: WEEK_INCLUDE,
-    orderBy: { number: "desc" },
+  const matches = await prisma.match.findMany({
+    where: { lockedAt: { not: null } },
+    include: { ...MATCH_INCLUDE, week: true },
+    orderBy: [{ week: { number: "desc" } }, { id: "asc" }],
   });
-  const payload = await Promise.all(weeks.map((w) => buildWeekPayload(w, req.session.userId)));
-  res.json({ weeks: payload });
+  res.json({ matches: matches.map(shapeArchivedMatch) });
 });
 
 router.get("/photos/:submissionId", async (req, res) => {
   const submission = await prisma.submission.findUnique({
     where: { id: Number(req.params.submissionId) },
-    include: { week: true },
+    include: { match: { include: { week: true } } },
   });
   if (!submission) return res.status(404).end();
 
   const owns = submission.userId === req.session.userId;
-  const submissionsCount = await prisma.submission.count({ where: { weekId: submission.weekId } });
-  const revealed = submissionsCount === 2 || new Date() >= new Date(submission.week.deadline);
+  const submissionsCount = await prisma.submission.count({ where: { matchId: submission.matchId } });
+  const revealed = submissionsCount === 2 || new Date() >= new Date(submission.match.week.deadline);
 
   if (!owns && !revealed) return res.status(403).json({ error: "not_revealed" });
 
@@ -108,6 +168,11 @@ router.post("/submissions", upload.single("photo"), async (req, res) => {
   const { week } = await rolloverIfNeeded();
   if (new Date() >= new Date(week.deadline)) return res.status(400).json({ error: "deadline_passed" });
 
+  const match = findMyMatch(week, req.session.userId);
+  if (!match) return res.status(400).json({ error: "no_match" });
+  const opponentId = opponentIdFor(match, req.session.userId);
+  if (!opponentId) return res.status(400).json({ error: "no_opponent" }); // bye / open slot — nothing to submit into yet
+
   const relativePath = await saveResizedPhoto(req.file.buffer);
   const data = {
     title: (req.body.title || "").slice(0, 200),
@@ -117,11 +182,11 @@ router.post("/submissions", upload.single("photo"), async (req, res) => {
     submittedAt: new Date(),
   };
 
-  const existing = await prisma.submission.findUnique({ where: { weekId_userId: { weekId: week.id, userId: req.session.userId } } });
+  const existing = await prisma.submission.findUnique({ where: { matchId_userId: { matchId: match.id, userId: req.session.userId } } });
   const submission = await prisma.submission.upsert({
-    where: { weekId_userId: { weekId: week.id, userId: req.session.userId } },
+    where: { matchId_userId: { matchId: match.id, userId: req.session.userId } },
     update: data,
-    create: { ...data, weekId: week.id, userId: req.session.userId },
+    create: { ...data, matchId: match.id, userId: req.session.userId },
   });
 
   // clean up the old file if this was a replace
@@ -129,14 +194,15 @@ router.post("/submissions", upload.single("photo"), async (req, res) => {
     require("../photos").deletePhoto(existing.photoPath).catch(() => {});
   }
 
-  const count = await prisma.submission.count({ where: { weekId: week.id } });
+  const count = await prisma.submission.count({ where: { matchId: match.id } });
   if (count === 2) {
-    runAiJudge(week.id).catch((err) => console.error("[judge] failed", err));
-    const allUsers = await prisma.user.findMany({ select: { id: true } });
-    sendPushToUsers(
-      allUsers.map((u) => u.id),
-      { title: "Reveal is ready", body: `"${week.brief}" — both of you are in.`, url: "/reveal" }
-    ).catch((err) => console.error("[push] reveal-ready failed", err));
+    await prisma.match.update({ where: { id: match.id }, data: { lockedAt: new Date() } });
+    runAiJudge(match.id).catch((err) => console.error("[judge] failed", err));
+    sendPushToUsers([match.playerAId, match.playerBId], {
+      title: "Reveal is ready",
+      body: `"${week.brief}" — both of you are in.`,
+      url: "/reveal",
+    }).catch((err) => console.error("[push] reveal-ready failed", err));
   }
 
   res.json({ ok: true, submissionId: submission.id });
@@ -144,22 +210,71 @@ router.post("/submissions", upload.single("photo"), async (req, res) => {
 
 router.post("/nudge", async (req, res) => {
   const { week } = await rolloverIfNeeded();
-  const users = await prisma.user.findMany({ select: { id: true, name: true } });
-  const me = users.find((u) => u.id === req.session.userId);
-  const target = otherUserId(users, req.session.userId);
-  if (!target) return res.status(400).json({ error: "no_other_player" });
+  const match = findMyMatch(week, req.session.userId);
+  if (!match) return res.status(400).json({ error: "no_match" });
+  const targetId = opponentIdFor(match, req.session.userId);
+  if (!targetId) return res.status(400).json({ error: "no_opponent" });
 
-  const alreadySubmitted = week.submissions.some((s) => s.userId === target);
+  const alreadySubmitted = match.submissions.some((s) => s.userId === targetId);
   if (alreadySubmitted) return res.status(400).json({ error: "already_submitted" });
 
   const recent = await prisma.nudge.findFirst({
-    where: { weekId: week.id, toUserId: target, sentAt: { gte: new Date(Date.now() - NUDGE_COOLDOWN_MS) } },
+    where: { matchId: match.id, toUserId: targetId, sentAt: { gte: new Date(Date.now() - NUDGE_COOLDOWN_MS) } },
     orderBy: { sentAt: "desc" },
   });
   if (recent) return res.status(429).json({ error: "rate_limited", retryAfter: recent.sentAt });
 
-  await prisma.nudge.create({ data: { weekId: week.id, fromUserId: req.session.userId, toUserId: target } });
-  await sendPush(target, { title: `${me.name} is waiting on you`, body: `"${week.brief}" — don't leave them hanging.`, url: "/upload" });
+  const me = await prisma.user.findUnique({ where: { id: req.session.userId } });
+  await prisma.nudge.create({ data: { matchId: match.id, fromUserId: req.session.userId, toUserId: targetId } });
+  await sendPush(targetId, { title: `${me.name} is waiting on you`, body: `"${week.brief}" — don't leave them hanging.`, url: "/upload" });
+
+  res.json({ ok: true });
+});
+
+router.post("/matches/:id/forfeit", async (req, res) => {
+  const matchId = Number(req.params.id);
+  const { week } = await rolloverIfNeeded();
+  const match = week.matches.find((m) => m.id === matchId);
+  if (!match) return res.status(404).json({ error: "not_found" });
+  if (match.playerAId !== req.session.userId && match.playerBId !== req.session.userId) {
+    return res.status(403).json({ error: "not_in_match" });
+  }
+  if (new Date() >= new Date(week.deadline)) return res.status(400).json({ error: "deadline_passed" });
+  if (match.submissions.some((s) => s.userId === req.session.userId)) return res.status(400).json({ error: "already_submitted" });
+
+  const data = match.playerAId === req.session.userId ? { playerAId: null, forfeitedUserId: req.session.userId } : { playerBId: null, forfeitedUserId: req.session.userId };
+  await prisma.match.update({ where: { id: matchId }, data });
+
+  const opponentId = opponentIdFor(match, req.session.userId);
+  if (opponentId) {
+    sendPush(opponentId, { title: "Your opponent forfeited", body: "Someone else may step in before the deadline.", url: "/" }).catch((err) =>
+      console.error("[push] forfeit failed", err)
+    );
+  }
+  res.json({ ok: true });
+});
+
+router.post("/matches/:id/join", async (req, res) => {
+  const matchId = Number(req.params.id);
+  const { week } = await rolloverIfNeeded();
+  const match = week.matches.find((m) => m.id === matchId);
+  if (!match) return res.status(404).json({ error: "not_found" });
+  if (new Date() >= new Date(week.deadline)) return res.status(400).json({ error: "deadline_passed" });
+  if (match.playerAId && match.playerBId) return res.status(400).json({ error: "match_full" });
+  if (match.forfeitedUserId === req.session.userId) return res.status(400).json({ error: "cant_rejoin_own_forfeit" });
+
+  const joinable = findJoinableMatches(week, req.session.userId);
+  if (!joinable.some((m) => m.id === matchId)) return res.status(400).json({ error: "not_eligible" });
+
+  const data = match.playerAId == null ? { playerAId: req.session.userId } : { playerBId: req.session.userId };
+  await prisma.match.update({ where: { id: matchId }, data });
+
+  // clean up my own now-redundant match(es) for this week, if nobody ever submitted to them
+  const mine = week.matches.filter((m) => m.id !== matchId && (m.playerAId === req.session.userId || m.playerBId === req.session.userId));
+  for (const m of mine) {
+    const subCount = await prisma.submission.count({ where: { matchId: m.id } });
+    if (subCount === 0) await prisma.match.delete({ where: { id: m.id } }).catch(() => {});
+  }
 
   res.json({ ok: true });
 });
@@ -187,6 +302,9 @@ router.post("/push/unsubscribe", async (req, res) => {
 
 router.post("/ratings", async (req, res) => {
   const { week } = await rolloverIfNeeded();
+  const match = findMyMatch(week, req.session.userId);
+  if (!match) return res.status(400).json({ error: "no_match" });
+  if (match.finalizedAt) return res.status(400).json({ error: "already_finalized" });
   const scores = req.body && req.body.scores;
   if (!scores || typeof scores !== "object") return res.status(400).json({ error: "invalid_scores" });
   const cleaned = {};
@@ -194,12 +312,12 @@ router.post("/ratings", async (req, res) => {
     const v = Number(scores[c.key]);
     cleaned[c.key] = Number.isFinite(v) ? Math.max(0, Math.min(10, v)) : 0;
   });
-  if (week.submissions.length < 2) return res.status(400).json({ error: "not_revealed" });
+  if (match.submissions.length < 2) return res.status(400).json({ error: "not_revealed" });
 
   await prisma.rating.upsert({
-    where: { weekId_raterId: { weekId: week.id, raterId: req.session.userId } },
+    where: { matchId_raterId: { matchId: match.id, raterId: req.session.userId } },
     update: { scores: cleaned, note: (req.body.note || "").slice(0, 500) },
-    create: { weekId: week.id, raterId: req.session.userId, scores: cleaned, note: (req.body.note || "").slice(0, 500) },
+    create: { matchId: match.id, raterId: req.session.userId, scores: cleaned, note: (req.body.note || "").slice(0, 500) },
   });
   res.json({ ok: true });
 });
@@ -207,7 +325,8 @@ router.post("/ratings", async (req, res) => {
 router.post("/brief/reroll", async (req, res) => {
   const { week } = await rolloverIfNeeded();
   const settings = await getSettings();
-  if (week.submissions.length > 0) return res.status(400).json({ error: "already_submitted" });
+  const anySubmitted = week.matches.some((m) => m.submissions.length > 0);
+  if (anySubmitted) return res.status(400).json({ error: "already_submitted" });
   if (week.rerollsUsedThisSeason >= settings.rerollTokensPerSeason) return res.status(400).json({ error: "no_rerolls_left" });
 
   const picked = pickBriefFor([], week.brief);

@@ -1,18 +1,43 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useGame } from "../GameContext";
 import { Photo, TypeRow, Seal, Avatar, RatingForm } from "../components/Shared";
 import { sumScores } from "../game";
 import { api } from "../api";
 
+const FINALIZE_DELAY_MS = 24 * 60 * 60 * 1000;
+
+function hoursLeft(lockedAt) {
+  if (!lockedAt) return null;
+  const ms = new Date(lockedAt).getTime() + FINALIZE_DELAY_MS - Date.now();
+  return Math.max(0, Math.ceil(ms / 3600000));
+}
+
 export default function Results({ me }) {
   const { state, reload } = useGame();
-  const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   if (!state) return null;
   const cur = state.currentWeek;
+  const match = state.myMatch;
 
-  if (!cur.revealed) {
+  if (!match || match.isBye) {
+    return (
+      <div className="page" style={{ maxWidth: 640, textAlign: "center", paddingTop: 100 }}>
+        <p className="eyebrow">Reveal · Week {String(cur.number).padStart(2, "0")}</p>
+        <h1 className="headline-l serif italic" style={{ marginTop: 14 }}>
+          No match this week.
+        </h1>
+        <p className="muted" style={{ marginTop: 12 }}>
+          {state.joinableMatches.length ? "Someone's short a player — you can step in from the dashboard." : "You're on the bench this round."}
+        </p>
+        <Link className="btn primary" style={{ marginTop: 24 }} to="/">
+          Back to dashboard
+        </Link>
+      </div>
+    );
+  }
+
+  if (!match.revealed) {
     return (
       <div className="page" style={{ maxWidth: 640, textAlign: "center", paddingTop: 100 }}>
         <p className="eyebrow">Reveal · Week {String(cur.number).padStart(2, "0")}</p>
@@ -29,14 +54,15 @@ export default function Results({ me }) {
     );
   }
 
-  const them = state.players.find((p) => p.id !== me.id);
-  const meP = state.players.find((p) => p.id === me.id);
-  const mySub = cur.submissions.find((s) => s.userId === me.id);
-  const theirSub = cur.submissions.find((s) => s.userId === them.id);
-  const myRating = cur.ratings.find((r) => r.raterId === me.id);
-  const theirRating = cur.ratings.find((r) => r.raterId === them.id);
-  const result = cur.result;
-  const winnerPlayer = result.winnerSubmissionId != null ? state.players.find((p) => p.id === (result.winnerSubmissionId === mySub.id ? me.id : them.id)) : null;
+  const them = match.opponent;
+  const mySub = match.submissions.find((s) => s.userId === me.id);
+  const theirSub = match.submissions.find((s) => s.userId !== me.id);
+  const myRating = match.ratings.find((r) => r.raterId === me.id);
+  const theirRating = them ? match.ratings.find((r) => r.raterId === them.id) : null;
+  const result = match.result;
+  const finalized = !!match.finalizedAt;
+  const remainingHours = hoursLeft(match.lockedAt);
+  const winnerPlayer = finalized && result.winnerSubmissionId != null ? (result.winnerSubmissionId === mySub.id ? me : them) : null;
 
   async function submitRating(val) {
     setBusy(true);
@@ -73,15 +99,15 @@ export default function Results({ me }) {
           <Photo
             src={mySub.photoUrl}
             ratio="4 / 5"
-            alt={`${meP.name}'s photo${mySub.title ? `: "${mySub.title}"` : ""}`}
+            alt={`Your photo${mySub.title ? `: "${mySub.title}"` : ""}`}
             label={
               <>
                 <span>{mySub.title ? `"${mySub.title}"` : "Untitled"}</span>
-                <span className="muted">{meP.name}</span>
+                <span className="muted">You</span>
               </>
             }
           />
-          {result.winnerSubmissionId === mySub.id && (
+          {finalized && result.winnerSubmissionId === mySub.id && (
             <div className="pill" style={{ color: "var(--t-light)", alignSelf: "flex-start" }}>
               Winner
             </div>
@@ -90,17 +116,17 @@ export default function Results({ me }) {
         <div className="vs-sep italic" aria-hidden="true">vs</div>
         <div className="col rise d2">
           <Photo
-            src={theirSub.photoUrl}
+            src={theirSub?.photoUrl}
             ratio="4 / 5"
-            alt={`${them.name}'s photo${theirSub.title ? `: "${theirSub.title}"` : ""}`}
+            alt={`${them?.name || "Opponent"}'s photo${theirSub?.title ? `: "${theirSub.title}"` : ""}`}
             label={
               <>
-                <span>{theirSub.title ? `"${theirSub.title}"` : "Untitled"}</span>
-                <span className="muted">{them.name}</span>
+                <span>{theirSub?.title ? `"${theirSub.title}"` : "Untitled"}</span>
+                <span className="muted">{them?.name || "Opponent"}</span>
               </>
             }
           />
-          {result.winnerSubmissionId === theirSub.id && (
+          {finalized && theirSub && result.winnerSubmissionId === theirSub.id && (
             <div className="pill" style={{ color: "var(--t-street)", alignSelf: "flex-start" }}>
               Winner
             </div>
@@ -108,46 +134,65 @@ export default function Results({ me }) {
         </div>
       </div>
 
-      {cur.verdict && (
+      {match.verdict && theirSub && (
         <div className="card" style={{ marginTop: 40 }}>
           <h2 className="eyebrow" style={{ marginBottom: 12 }}>
-            {cur.verdict.judgeName}'s verdict
+            {match.verdict.judgeName}'s verdict
           </h2>
           <div className="grid-2">
             <p className="serif" style={{ fontSize: 16, lineHeight: 1.5, color: "var(--ink-2)" }}>
-              {cur.verdict.critique[String(mySub.id)]}
+              {match.verdict.critique[String(mySub.id)]}
             </p>
             <p className="serif" style={{ fontSize: 16, lineHeight: 1.5, color: "var(--ink-2)" }}>
-              {cur.verdict.critique[String(theirSub.id)]}
+              {match.verdict.critique[String(theirSub.id)]}
             </p>
           </div>
           <div className="divider" />
           <p className="serif italic" style={{ fontSize: 18 }}>
-            {cur.verdict.critique.comparison}
+            {match.verdict.critique.comparison}
           </p>
         </div>
       )}
 
-      <div className="card" style={{ marginTop: 24 }}>
-        <h2 className="eyebrow" style={{ marginBottom: 12 }}>
-          Mutual rating — rate each other's photo
-        </h2>
-        <div className="grid-2">
-          <div>
-            {theirRating && (
-              <p className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
-                {them.name} rated your photo: {sumScores(theirRating.scores)} / 50
-              </p>
-            )}
-            {!theirRating && <p className="muted" style={{ fontSize: 13 }}>Waiting on {them.name} to rate your photo.</p>}
-          </div>
-          <div>
-            <RatingForm title={`Rate ${them.name}'s photo`} initial={myRating} saving={busy} onSubmit={submitRating} />
-          </div>
+      {theirSub && (
+        <div className="card" style={{ marginTop: 24 }}>
+          <h2 className="eyebrow" style={{ marginBottom: 12 }}>
+            Mutual rating — rate each other's photo
+          </h2>
+          {finalized ? (
+            <p className="muted" style={{ fontSize: 13 }}>
+              Scoring's closed for this one — the final score already locked in.
+            </p>
+          ) : (
+            <div className="grid-2">
+              <div>
+                {theirRating && (
+                  <p className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
+                    {them.name} rated your photo: {sumScores(theirRating.scores)} / 50
+                  </p>
+                )}
+                {!theirRating && <p className="muted" style={{ fontSize: 13 }}>Waiting on {them?.name || "your opponent"} to rate your photo.</p>}
+              </div>
+              <div>
+                <RatingForm title={`Rate ${them?.name || "their"} photo`} initial={myRating} saving={busy} onSubmit={submitRating} />
+              </div>
+            </div>
+          )}
         </div>
-      </div>
+      )}
 
-      {!result.pending && (
+      {theirSub && !finalized && (
+        <div className="card" style={{ marginTop: 24, padding: 24, textAlign: "center" }}>
+          <p className="eyebrow" style={{ marginBottom: 8 }}>
+            Final score
+          </p>
+          <p className="serif italic" style={{ fontSize: 20 }}>
+            {remainingHours === 0 ? "Locking in any moment now." : `Locks in ~${remainingHours}h — AI critique + your ratings combine then.`}
+          </p>
+        </div>
+      )}
+
+      {finalized && !result.pending && (
         <div className="card" style={{ marginTop: 24, padding: 32 }}>
           <h2 className="eyebrow" style={{ marginBottom: 12 }}>
             Standing result
@@ -158,10 +203,10 @@ export default function Results({ me }) {
               <div>
                 <p className="eyebrow">This week</p>
                 <p className="serif" style={{ fontSize: 32, marginTop: 4 }}>
-                  {winnerPlayer ? `${winnerPlayer.name} wins` : "It's a tie"}
+                  {winnerPlayer ? `${winnerPlayer.id === me.id ? "You win" : `${winnerPlayer.name} wins`}` : "It's a tie"}
                 </p>
                 <p className="muted" style={{ fontSize: 13, marginTop: 6 }}>
-                  {result.scores[mySub.id] ?? 0} – {result.scores[theirSub.id] ?? 0}
+                  {result.scores[mySub.id] ?? 0} – {theirSub ? result.scores[theirSub.id] ?? 0 : "—"}
                 </p>
               </div>
             </div>

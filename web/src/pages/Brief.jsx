@@ -12,7 +12,7 @@ export default function Brief() {
   const [error, setError] = useState("");
   if (!state) return null;
   const cur = state.currentWeek;
-  const canReroll = cur.submissions.length === 0 && cur.rerollsUsedThisSeason < cur.rerollTokensPerSeason;
+  const canReroll = !cur.anySubmitted && cur.rerollsUsedThisSeason < cur.rerollTokensPerSeason;
 
   async function reroll() {
     setBusy(true);

@@ -83,7 +83,7 @@ export default function Settings({ me, onNameChanged }) {
         <p className="eyebrow">Settings · The Frame Friends ruleset</p>
       </div>
       <h1 className="headline-l serif italic" style={{ marginBottom: 12 }}>
-        How you two play the game.
+        How you all play the game.
       </h1>
       <p className="muted" style={{ maxWidth: "62ch", marginBottom: 36 }}>
         You're logged in as <strong>{me.name}</strong> ({me.email}).
@@ -124,7 +124,7 @@ export default function Settings({ me, onNameChanged }) {
                 <input id="settings-lock-time" className="text" style={{ flex: 1 }} value={settings.deadlineTime} onChange={(e) => setCfg({ ...settings, deadlineTime: e.target.value })} />
               </div>
               <p className="muted" style={{ fontSize: 11, margin: 0 }}>
-                Both times are in London time, whichever timezone you two are actually in.
+                Both times are in London time, whichever timezone you're actually in.
               </p>
             </div>
             <div className="col" style={{ gap: 6, marginTop: 14 }}>
