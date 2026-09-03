@@ -338,12 +338,13 @@ router.post("/brief/reroll", async (req, res) => {
 });
 
 router.patch("/settings", async (req, res) => {
-  const { deadlineDay, deadlineTime, briefDropDay, rerollTokensPerSeason } = req.body || {};
+  const { deadlineDay, deadlineTime, briefDropDay, rerollTokensPerSeason, cadenceWeeks } = req.body || {};
   const data = {};
   if (deadlineDay) data.deadlineDay = String(deadlineDay);
   if (deadlineTime) data.deadlineTime = String(deadlineTime);
   if (briefDropDay) data.briefDropDay = String(briefDropDay);
   if (Number.isFinite(Number(rerollTokensPerSeason))) data.rerollTokensPerSeason = Number(rerollTokensPerSeason);
+  if (Number.isFinite(Number(cadenceWeeks))) data.cadenceWeeks = Math.max(1, Math.min(8, Number(cadenceWeeks)));
   const settings = await prisma.settings.update({ where: { id: 1 }, data });
   res.json({ settings });
 });

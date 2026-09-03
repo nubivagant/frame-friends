@@ -169,6 +169,15 @@ function nextOccurrence(from, dayName, timeStr) {
   return candidate;
 }
 
+/** Like nextOccurrence, but skips ahead an extra (cadenceWeeks - 1) weeks —
+ *  same weekday/time each round, just further apart. cadenceWeeks: 1 for
+ *  weekly (identical to nextOccurrence), 2 for fortnightly, etc. */
+function nextOccurrenceWithCadence(from, dayName, timeStr, cadenceWeeks) {
+  const candidate = nextOccurrence(from, dayName, timeStr);
+  const extraWeeks = Math.max(1, cadenceWeeks || 1) - 1;
+  return extraWeeks > 0 ? new Date(candidate.getTime() + extraWeeks * 7 * 86400000) : candidate;
+}
+
 module.exports = {
   TYPES,
   TYPE_IDS,
@@ -178,5 +187,6 @@ module.exports = {
   sumScores,
   computeAwards,
   nextOccurrence,
+  nextOccurrenceWithCadence,
   londonPartsAt,
 };

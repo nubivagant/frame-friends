@@ -48,6 +48,12 @@ model Settings {
   briefDropDay          String @default("Monday")
   rerollTokensPerSeason Int    @default(2)
   seasonLength          Int    @default(8)
+  // Weeks between rounds — 1 = weekly, 2 = fortnightly. Rounds now chain
+  // continuously (the next one opens the instant the previous one locks,
+  // see rolloverIfNeeded in weeks.js), so this only stretches how far out
+  // the deadline lands, not briefDropDay — kept for the initial bootstrap
+  // week only at this point.
+  cadenceWeeks          Int    @default(1)
 }
 
 model Week {

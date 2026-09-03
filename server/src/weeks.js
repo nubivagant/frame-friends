@@ -1,6 +1,6 @@
 "use strict";
 const { prisma } = require("./db");
-const { pickBriefFor, sumScores, computeAwards, nextOccurrence } = require("./game");
+const { pickBriefFor, sumScores, computeAwards, nextOccurrence, nextOccurrenceWithCadence } = require("./game");
 const { sendPushToUsers } = require("./push");
 
 const MATCH_INCLUDE = { submissions: true, ratings: true, verdict: true };
@@ -118,8 +118,12 @@ async function rolloverIfNeeded() {
     const nextNumber = week.number + 1;
     const seasonLength = settings.seasonLength || 8;
     const newSeason = week.number % seasonLength === 0 ? week.season + 1 : week.season;
-    const opened = nextOccurrence(new Date(week.deadline), settings.briefDropDay, "00:00");
-    const deadline = nextOccurrence(opened, settings.deadlineDay, settings.deadlineTime);
+    // Rounds chain continuously — the next one opens the instant the
+    // previous one locks, no separate briefDropDay gap — so a fortnightly
+    // (or longer) cadence stretches the round itself out to that many
+    // weeks, rather than leaving idle time between back-to-back weekly ones.
+    const opened = new Date(week.deadline);
+    const deadline = nextOccurrenceWithCadence(opened, settings.deadlineDay, settings.deadlineTime, settings.cadenceWeeks);
 
     await prisma.week.update({ where: { id: week.id }, data: { archivedAt: new Date() } });
     const created = await prisma.week.create({
