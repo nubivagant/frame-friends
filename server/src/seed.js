@@ -20,14 +20,20 @@ async function seedSettings() {
 }
 
 // One-off invite riding along with a normal deploy — set INVITE_SLUG/
-// INVITE_NAME/INVITE_EMAIL as service variables, redeploy, read the printed
-// link from the boot log, then unset the variables so it doesn't re-invite
-// (harmlessly, but pointlessly) on every future boot.
+// INVITE_NAME/INVITE_EMAIL (and optionally INVITE_PASSWORD, to set a
+// password directly instead of generating a link) as service variables,
+// redeploy, read the printed credentials/link from the boot log, then
+// unset the variables so it doesn't re-invite (harmlessly, but
+// pointlessly) on every future boot.
 async function maybeInviteFromEnv() {
-  const { INVITE_SLUG, INVITE_NAME, INVITE_EMAIL } = process.env;
+  const { INVITE_SLUG, INVITE_NAME, INVITE_EMAIL, INVITE_PASSWORD } = process.env;
   if (!INVITE_SLUG || !INVITE_NAME || !INVITE_EMAIL) return;
-  const link = await inviteUser({ slug: INVITE_SLUG, name: INVITE_NAME, email: INVITE_EMAIL });
-  console.log(`[invite] "${INVITE_NAME}" (${INVITE_SLUG}) ready — set-password link (expires in 1h):\n  ${link}`);
+  const result = await inviteUser({ slug: INVITE_SLUG, name: INVITE_NAME, email: INVITE_EMAIL, password: INVITE_PASSWORD });
+  if (result.password) {
+    console.log(`[invite] "${INVITE_NAME}" (${INVITE_SLUG}) ready — email: ${INVITE_EMAIL}, password: ${result.password}`);
+  } else {
+    console.log(`[invite] "${INVITE_NAME}" (${INVITE_SLUG}) ready — set-password link (expires in 1h):\n  ${result.link}`);
+  }
 }
 
 async function main() {
