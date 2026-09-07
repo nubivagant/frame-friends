@@ -1,6 +1,7 @@
 "use strict";
 const { prisma } = require("./db");
 const config = require("./config");
+const { BRIEF_BANK } = require("./game");
 const { inviteUser } = require("./scripts/invite-user");
 
 async function upsertPlayer(slug, name, email) {
@@ -36,10 +37,25 @@ async function maybeInviteFromEnv() {
   }
 }
 
+// Keeps the live round's "From the Judge" copy in sync with BRIEF_BANK —
+// a Week snapshots its brief/inspiration text at creation time, so an
+// edit to the copy bank only reaches future rounds unless this runs too.
+// Archived weeks are left alone; they're history, not a live display.
+async function refreshCurrentWeekInspiration() {
+  const week = await prisma.week.findFirst({ where: { archivedAt: null }, orderBy: { number: "desc" } });
+  if (!week) return;
+  const entry = BRIEF_BANK.find((b) => b.brief === week.brief);
+  if (entry && entry.inspiration !== week.inspiration) {
+    await prisma.week.update({ where: { id: week.id }, data: { inspiration: entry.inspiration } });
+    console.log(`[seed] refreshed "From the Judge" copy for the live round (week ${week.number})`);
+  }
+}
+
 async function main() {
   await upsertPlayer("scott", "Scott", config.scottEmail);
   await upsertPlayer("kurtis", "Kurtis", config.kurtisEmail);
   await seedSettings();
+  await refreshCurrentWeekInspiration();
   await maybeInviteFromEnv();
   console.log("Seeded users: scott, kurtis");
 }
