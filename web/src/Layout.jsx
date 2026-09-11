@@ -117,7 +117,7 @@ function FieldLog() {
   const cur = state.currentWeek;
   const [now] = useState(() => new Date());
   return (
-    <div style={{ padding: "10px 28px 0" }}>
+    <div className="field-log-wrap">
       <div className="field-log">
         <span className="tick" aria-hidden="true">▲</span>
         <strong>Field Log</strong>
@@ -142,23 +142,7 @@ function FieldLog() {
 
 function Footer() {
   return (
-    <footer
-      style={{
-        borderTop: "1px solid var(--line)",
-        marginTop: "auto",
-        padding: "28px",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        flexWrap: "wrap",
-        gap: 12,
-        fontFamily: "var(--mono)",
-        fontSize: 11,
-        letterSpacing: ".12em",
-        textTransform: "uppercase",
-        color: "var(--muted)",
-      }}
-    >
+    <footer className="app-footer">
       <span>Frame Friends · Private edition</span>
       <span>"Friends learning how they see"</span>
     </footer>

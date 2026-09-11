@@ -37,7 +37,7 @@ export default function Dashboard({ me }) {
 
   return (
     <div className="page">
-      <div className="row between" style={{ alignItems: "flex-start", marginBottom: 14, flexWrap: "wrap", gap: 12 }}>
+      <div className="dashboard-header">
         <div>
           <div className="row" style={{ gap: 12, alignItems: "baseline" }}>
             <p className="eyebrow" style={{ margin: 0 }}>
@@ -49,7 +49,7 @@ export default function Dashboard({ me }) {
               </span>
             )}
           </div>
-          <h1 className="serif italic rise" style={{ fontSize: 32, lineHeight: 1.1, marginTop: 8, fontWeight: 400 }}>
+          <h1 className="dashboard-title serif italic rise">
             {headline}
           </h1>
           <p className="muted" style={{ marginTop: 6, fontSize: 13, maxWidth: "56ch" }}>
